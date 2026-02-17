@@ -388,36 +388,39 @@
 
   /* ── Champion box ── */
   .champion-col {
-    width: 240px;
+    width: 280px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
+    justify-content: center;
   }
   .champion-header {
-    height: 40px;
-    margin-bottom: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.05rem;
+    font-size: 1.1rem;
     letter-spacing: 3px;
     color: var(--accent);
+    margin-bottom: 14px;
+    text-align: center;
   }
   .champion-box {
-    width: 200px;
-    background: linear-gradient(145deg, #12100a, #1d1808);
+    width: 250px;
+    background: linear-gradient(145deg, #12100a, #1f1a06);
     border: 2px solid var(--accent);
-    border-radius: 10px;
-    padding: 26px 16px;
+    border-radius: 14px;
+    padding: 32px 22px;
     text-align: center;
-    box-shadow: 0 0 36px rgba(245,166,35,0.15), inset 0 1px 0 rgba(255,255,255,0.04);
+    box-shadow: 0 0 50px rgba(245,166,35,0.22), 0 0 12px rgba(245,166,35,0.1), inset 0 1px 0 rgba(255,255,255,0.05);
+    transition: box-shadow 0.4s;
   }
-  .champ-trophy  { font-size: 2.4rem; display: block; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(245,166,35,0.85)); }
-  .champ-label   { font-family: 'Bebas Neue', sans-serif; font-size: 0.8rem; letter-spacing: 4px; color: var(--accent); }
-  .champ-team    { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; color: #fff; margin-top: 6px; line-height: 1.1; }
-  .champ-players { font-size: 0.78rem; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+  .champion-box.crowned {
+    box-shadow: 0 0 70px rgba(245,166,35,0.5), 0 0 24px rgba(245,166,35,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+    border-color: #f7dc6f;
+  }
+  .champ-trophy  { font-size: 3rem; display: block; margin-bottom: 14px; filter: drop-shadow(0 0 14px rgba(245,166,35,0.9)); }
+  .champ-label   { font-family: 'Bebas Neue', sans-serif; font-size: 0.82rem; letter-spacing: 5px; color: var(--accent); }
+  .champ-team    { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; color: #fff; margin-top: 8px; line-height: 1.1; }
+  .champ-players { font-size: 0.85rem; color: var(--muted); margin-top: 8px; line-height: 1.6; }
 
   /* scrollbar */
   ::-webkit-scrollbar { height: 5px; width: 5px; }
@@ -436,7 +439,11 @@
 <!-- Password Modal -->
 <div class="modal-overlay" id="pwModal">
   <div class="modal-box">
-    <span class="modal-lock-icon">🔒</span>
+    <svg class="modal-lock-icon" viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent);margin-bottom:12px;">
+      <rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="rgba(245,166,35,0.12)" stroke="var(--accent)"/>
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="var(--accent)"/>
+      <circle cx="12" cy="16" r="1.2" fill="var(--accent)" stroke="none"/>
+    </svg>
     <div class="modal-title">Enter Password</div>
     <div class="modal-sub">Admin access required</div>
     <input class="modal-input" id="pwInput" type="password" placeholder="••••••••••••••"
@@ -458,7 +465,20 @@
     <button class="btn-reset" id="resetBtn" onclick="resetBracket()" disabled>↺ Reset Bracket</button>
     <div class="lock-area" id="lockArea">
       <button class="btn-lock" onclick="toggleLock()" title="Lock / Unlock bracket editing">
-        <span class="lock-icon" id="lockIcon">🔒</span>
+        <span id="lockIcon">
+          <!-- Locked SVG -->
+          <svg id="svgLocked" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="rgba(100,120,160,0.18)" stroke="#7a8499"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" stroke="#7a8499"/>
+            <circle cx="12" cy="16" r="1.3" fill="#7a8499" stroke="none"/>
+          </svg>
+          <!-- Unlocked SVG -->
+          <svg id="svgUnlocked" viewBox="0 0 24 24" width="28" height="28" fill="none" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" fill="rgba(46,204,113,0.15)" stroke="#2ecc71"/>
+            <path d="M7 11V7a5 5 0 0 1 9.9-1" stroke="#2ecc71"/>
+            <circle cx="12" cy="16" r="1.3" fill="#2ecc71" stroke="none"/>
+          </svg>
+        </span>
         <span class="lock-status" id="lockStatus">Locked</span>
       </button>
     </div>
@@ -662,7 +682,8 @@ function checkSession() {
 
 function applyUnlock() {
   isUnlocked = true;
-  document.getElementById('lockIcon').textContent   = '🔓';
+  document.getElementById('svgLocked').style.display   = 'none';
+  document.getElementById('svgUnlocked').style.display = '';
   document.getElementById('lockStatus').textContent = 'Unlocked';
   document.getElementById('lockArea').classList.add('unlocked');
   document.getElementById('lockHint').textContent   = '🔓 Bracket editing enabled';
@@ -678,7 +699,8 @@ function lock() {
   isUnlocked = false;
   localStorage.removeItem('hd2026_unlock_exp');
   if (lockTimer) clearTimeout(lockTimer);
-  document.getElementById('lockIcon').textContent   = '🔒';
+  document.getElementById('svgLocked').style.display   = '';
+  document.getElementById('svgUnlocked').style.display = 'none';
   document.getElementById('lockStatus').textContent = 'Locked';
   document.getElementById('lockArea').classList.remove('unlocked');
   document.getElementById('lockHint').textContent   = '🔒 Bracket is locked — view only';
@@ -728,14 +750,30 @@ document.getElementById('pwModal').addEventListener('click', function(e) {
   if (e.target === this) closeModal();
 });
 
-/* ─── CONFETTI ──────────────────────────────────────────────── */
+/* ─── CANVAS POLYFILL ───────────────────────────────────────── */
+if (!CanvasRenderingContext2D.prototype.roundRect) {
+  CanvasRenderingContext2D.prototype.roundRect = function(x, y, w, h, r) {
+    this.beginPath();
+    this.moveTo(x + r, y);
+    this.lineTo(x + w - r, y);
+    this.quadraticCurveTo(x + w, y, x + w, y + r);
+    this.lineTo(x + w, y + h - r);
+    this.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    this.lineTo(x + r, y + h);
+    this.quadraticCurveTo(x, y + h, x, y + h - r);
+    this.lineTo(x, y + r);
+    this.quadraticCurveTo(x, y, x + r, y);
+    this.closePath();
+  };
+}
+
+/* ─── CONFETTI (regular rounds) ─────────────────────────────── */
 const CONFETTI_COLORS = ['#f5a623','#f7dc6f','#2ecc71','#3498db','#e74c3c','#9b59b6','#1abc9c','#ffffff'];
 
-function launchConfetti(originEl, isChampion) {
+function launchConfetti(originEl) {
   const rect    = originEl.getBoundingClientRect();
   const originX = rect.left + rect.width  / 2;
   const originY = rect.top  + rect.height / 2;
-  const count   = isChampion ? 200 : 55;
 
   const canvas = document.createElement('canvas');
   canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;';
@@ -744,56 +782,250 @@ function launchConfetti(originEl, isChampion) {
   document.body.appendChild(canvas);
   const ctx = canvas.getContext('2d');
 
-  const pieces = Array.from({ length: count }, () => {
-    const angle = isChampion
-      ? Math.random() * Math.PI * 2
-      : (Math.random() * Math.PI * 1.2) - Math.PI * 0.6;
-    const speed = isChampion ? (5 + Math.random() * 10) : (3 + Math.random() * 6);
-    const size  = 5 + Math.random() * (isChampion ? 11 : 7);
+  const pieces = Array.from({ length: 55 }, () => {
+    const angle = (Math.random() * Math.PI * 1.2) - Math.PI * 0.6;
+    const speed = 3 + Math.random() * 6;
+    const size  = 5 + Math.random() * 7;
     return {
       x: originX, y: originY,
       vx: Math.cos(angle) * speed,
-      vy: Math.sin(angle) * speed - (isChampion ? 3 : 5),
-      rot: Math.random() * 360,
-      rotV: (Math.random() - 0.5) * 14,
+      vy: Math.sin(angle) * speed - 5,
+      rot: Math.random() * 360, rotV: (Math.random() - 0.5) * 14,
       w: size, h: size * (0.35 + Math.random() * 0.5),
       color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
-      alpha: 1,
-      circle: Math.random() > 0.6,
+      alpha: 1, circle: Math.random() > 0.6,
     };
   });
 
-  const totalFrames = isChampion ? 160 : 80;
   let frame = 0;
-
+  const totalFrames = 80;
   function tick() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     let anyAlive = false;
     pieces.forEach(p => {
-      p.vy  += 0.28;
-      p.x   += p.vx;
-      p.y   += p.vy;
-      p.rot += p.rotV;
+      p.vy += 0.28; p.x += p.vx; p.y += p.vy; p.rot += p.rotV;
       p.alpha = Math.max(0, 1 - frame / totalFrames);
       if (p.alpha > 0.01) anyAlive = true;
-      ctx.save();
-      ctx.globalAlpha = p.alpha;
-      ctx.translate(p.x, p.y);
-      ctx.rotate(p.rot * Math.PI / 180);
+      ctx.save(); ctx.globalAlpha = p.alpha;
+      ctx.translate(p.x, p.y); ctx.rotate(p.rot * Math.PI / 180);
       ctx.fillStyle = p.color;
-      if (p.circle) {
-        ctx.beginPath();
-        ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2);
-        ctx.fill();
-      } else {
-        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
-      }
+      if (p.circle) { ctx.beginPath(); ctx.arc(0,0,p.w/2,0,Math.PI*2); ctx.fill(); }
+      else ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
       ctx.restore();
     });
     frame++;
-    if (anyAlive) requestAnimationFrame(tick);
+    if (anyAlive) requestAnimationFrame(tick); else canvas.remove();
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ─── FIREWORKS + CORNHOLE BAGS (Championship) ───────────────── */
+function launchChampionCelebration() {
+  // Glow the champion box
+  const box = document.getElementById('champBox');
+  if (box) box.classList.add('crowned');
+
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;';
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+
+  const W = canvas.width, H = canvas.height;
+  const FW_COLORS = ['#f5a623','#f7dc6f','#e74c3c','#3498db','#2ecc71','#9b59b6','#ff6b9d','#ffffff','#00d2ff'];
+  const BAG_COLORS = ['#e74c3c','#3498db','#f5a623','#2ecc71','#9b59b6'];
+
+  let particles = [];
+  let rockets   = [];
+  let bags      = [];
+  let frame     = 0;
+  const TOTAL   = 420; // ~7 seconds at 60fps
+
+  function makeRocket() {
+    const x = W * (0.15 + Math.random() * 0.7);
+    return {
+      x, y: H + 10,
+      tx: x + (Math.random() - 0.5) * 120,
+      ty: H * (0.1 + Math.random() * 0.45),
+      speed: 8 + Math.random() * 6,
+      color: FW_COLORS[Math.floor(Math.random() * FW_COLORS.length)],
+      trail: [],
+      exploded: false,
+    };
+  }
+
+  function explode(rx, ry, color) {
+    const count = 80 + Math.floor(Math.random() * 60);
+    for (let i = 0; i < count; i++) {
+      const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.3;
+      const speed = 2 + Math.random() * 7;
+      particles.push({
+        x: rx, y: ry,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        color: Math.random() > 0.3 ? color : '#ffffff',
+        alpha: 1,
+        size: 2 + Math.random() * 3,
+        decay: 0.012 + Math.random() * 0.012,
+        sparkle: Math.random() > 0.6,
+      });
+    }
+    // Starburst ring
+    for (let i = 0; i < 12; i++) {
+      const angle = (Math.PI * 2 * i) / 12;
+      particles.push({
+        x: rx, y: ry,
+        vx: Math.cos(angle) * 9,
+        vy: Math.sin(angle) * 9,
+        color: '#ffffff',
+        alpha: 1, size: 3, decay: 0.025, sparkle: false,
+      });
+    }
+  }
+
+  function makeBag() {
+    // Bags launched from bottom corners and center, arcing up
+    const startX = Math.random() > 0.5 ? W * 0.1 : W * 0.9;
+    const color  = BAG_COLORS[Math.floor(Math.random() * BAG_COLORS.length)];
+    const angle  = startX < W / 2
+      ? -(0.8 + Math.random() * 0.5)   // launched right
+      : -(Math.PI - 0.8 - Math.random() * 0.5); // launched left
+    const speed  = 14 + Math.random() * 8;
+    return {
+      x: startX, y: H + 20,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      rot: Math.random() * 360,
+      rotV: (Math.random() - 0.5) * 18,
+      color, alpha: 1, size: 18 + Math.random() * 10,
+      alive: true,
+    };
+  }
+
+  // Schedule rockets
+  const rocketSchedule = [];
+  for (let i = 0; i < 14; i++) {
+    rocketSchedule.push(Math.floor(Math.random() * (TOTAL - 60)));
+  }
+  rocketSchedule.sort((a,b) => a - b);
+
+  // Schedule bags
+  const bagSchedule = [];
+  for (let i = 0; i < 10; i++) {
+    bagSchedule.push(Math.floor(Math.random() * (TOTAL - 30)));
+  }
+
+  function drawBag(ctx, b) {
+    ctx.save();
+    ctx.globalAlpha = b.alpha;
+    ctx.translate(b.x, b.y);
+    ctx.rotate(b.rot * Math.PI / 180);
+    // Draw cornhole bag: rounded square with stitching
+    const s = b.size;
+    ctx.fillStyle = b.color;
+    ctx.beginPath();
+    ctx.roundRect(-s/2, -s/2, s, s, s * 0.2);
+    ctx.fill();
+    // Stitching lines
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.lineWidth = 1.2;
+    ctx.strokeRect(-s/2 + s*0.15, -s/2 + s*0.15, s*0.7, s*0.7);
+    // Center dot
+    ctx.fillStyle = 'rgba(255,255,255,0.6)';
+    ctx.beginPath();
+    ctx.arc(0, 0, s * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  function tick() {
+    ctx.clearRect(0, 0, W, H);
+
+    // Launch rockets on schedule
+    if (rocketSchedule.length && frame >= rocketSchedule[0]) {
+      rockets.push(makeRocket());
+      rocketSchedule.shift();
+    }
+    // Launch bags on schedule
+    if (bagSchedule.length && frame >= bagSchedule[0]) {
+      bags.push(makeBag());
+      bagSchedule.shift();
+    }
+
+    // Update & draw rockets
+    rockets = rockets.filter(r => {
+      if (r.exploded) return false;
+      const dx = r.tx - r.x, dy = r.ty - r.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < r.speed) {
+        explode(r.x, r.y, r.color);
+        // Flash
+        ctx.fillStyle = 'rgba(255,255,255,0.18)';
+        ctx.fillRect(0,0,W,H);
+        r.exploded = true;
+        return false;
+      }
+      r.trail.push({ x: r.x, y: r.y });
+      if (r.trail.length > 12) r.trail.shift();
+      r.x += (dx / dist) * r.speed;
+      r.y += (dy / dist) * r.speed;
+      // Draw trail
+      r.trail.forEach((pt, i) => {
+        ctx.save();
+        ctx.globalAlpha = (i / r.trail.length) * 0.6;
+        ctx.fillStyle = r.color;
+        ctx.beginPath();
+        ctx.arc(pt.x, pt.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      });
+      // Draw rocket head
+      ctx.save();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#fff';
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, 3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return true;
+    });
+
+    // Update & draw particles
+    particles = particles.filter(p => {
+      p.vx *= 0.97; p.vy *= 0.97; p.vy += 0.08;
+      p.x += p.vx; p.y += p.vy;
+      p.alpha = Math.max(0, p.alpha - p.decay);
+      if (p.alpha < 0.01) return false;
+      ctx.save();
+      ctx.globalAlpha = p.sparkle ? p.alpha * (0.5 + 0.5 * Math.sin(frame * 0.4)) : p.alpha;
+      ctx.fillStyle = p.color;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+      return true;
+    });
+
+    // Update & draw bags
+    bags = bags.filter(b => {
+      b.vx *= 0.995;
+      b.vy += 0.45; // gravity
+      b.x  += b.vx;
+      b.y  += b.vy;
+      b.rot += b.rotV;
+      // Fade when off screen
+      if (b.y > H + 60) { b.alive = false; return false; }
+      b.alpha = Math.min(1, Math.max(0, 1 - (frame / TOTAL) * 0.5));
+      drawBag(ctx, b);
+      return b.alive;
+    });
+
+    frame++;
+    if (frame < TOTAL) requestAnimationFrame(tick);
     else canvas.remove();
   }
+
   requestAnimationFrame(tick);
 }
 
@@ -822,7 +1054,8 @@ function clickSlot(matchId, slot) {
       const slotEls = card ? card.querySelectorAll('.team-slot') : [];
       const origin  = slotEls[slot === 'top' ? 0 : 1] || card || document.getElementById('bracket');
       const isChamp = ST.rounds[ST.rounds.length - 1][0]?.id === matchId;
-      launchConfetti(origin, isChamp);
+      if (isChamp) launchChampionCelebration();
+      else launchConfetti(origin);
     });
   }
 }
@@ -895,28 +1128,40 @@ function render() {
     col.appendChild(matchesEl);
     el.appendChild(col);
 
-    // Connector column after each round except the last
+    // After last round: add connector + champion box inline
     if (ri < ST.rounds.length - 1) {
       const conn = document.createElement('div');
       conn.className = 'connector-col';
       conn.setAttribute('data-ri', ri);
       el.appendChild(conn);
+    } else {
+      // This is the final round — add a short connector then champion box
+      const finalConn = document.createElement('div');
+      finalConn.className = 'connector-col';
+      finalConn.setAttribute('data-ri', ri);
+      finalConn.setAttribute('data-final', '1');
+      el.appendChild(finalConn);
+
+      const finalWinner = ST.rounds[ST.rounds.length - 1][0]?.winner;
+      const champCol = document.createElement('div');
+      champCol.className = 'champion-col';
+
+      // Vertically center the champion box relative to the final match
+      const finalSpan = Math.pow(2, ri) * BLOCK_H;
+      champCol.style.height = `${finalSpan}px`;
+      champCol.style.paddingTop = '40px'; // offset for round header
+
+      champCol.innerHTML = `
+        <div class="champion-header">🏆 Champion</div>
+        <div class="champion-box" id="champBox">
+          <span class="champ-trophy">🏆</span>
+          <div class="champ-label">Tournament Champion</div>
+          <div class="champ-team">${finalWinner ? finalWinner.label : 'TBD'}</div>
+          <div class="champ-players">${finalWinner ? `${finalWinner.p1}<br>${finalWinner.p2}` : '<span style="color:var(--muted);font-size:0.82rem;">Awaiting finalist</span>'}</div>
+        </div>`;
+      el.appendChild(champCol);
     }
   });
-
-  // Champion display
-  const finalWinner = ST.rounds[ST.rounds.length - 1][0]?.winner;
-  const champCol = document.createElement('div');
-  champCol.className = 'champion-col';
-  champCol.innerHTML = `
-    <div class="champion-header">Champion</div>
-    <div class="champion-box">
-      <span class="champ-trophy">🏆</span>
-      <div class="champ-label">Champion</div>
-      <div class="champ-team">${finalWinner ? finalWinner.label : 'TBD'}</div>
-      <div class="champ-players">${finalWinner ? `${finalWinner.p1}<br>${finalWinner.p2}` : ''}</div>
-    </div>`;
-  el.appendChild(champCol);
 
   setTimeout(drawConnectors, 40);
 }
