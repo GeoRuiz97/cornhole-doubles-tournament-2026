@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hardy Diagnostics Cornhole Doubles Tournament 2026</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:       #0e1117;
+    --surface:  #161b25;
+    --card:     #1e2535;
+    --border:   #2a3347;
+    --accent:   #f5a623;
+    --red:      #e84545;
+    --green:    #2ecc71;
+    --text:     #e8edf5;
+    --muted:    #7a8499;
+    --bye-bg:   #142010;
+    --bye-text: #5dba3a;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    min-height: 100vh;
+    overflow-x: auto;
+  }
+
+  /* ── Header ── */
+  header {
+    text-align: center;
+    padding: 44px 24px 30px;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(180deg, #07090e 0%, var(--bg) 100%);
+  }
+  .trophy-icon {
+    font-size: 2.8rem;
+    display: block;
+    margin-bottom: 10px;
+    filter: drop-shadow(0 0 16px rgba(245,166,35,0.7));
+  }
+  header h1 {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(1.8rem, 4.5vw, 3.5rem);
+    letter-spacing: 4px;
+    background: linear-gradient(135deg, #f5a623 0%, #f7dc6f 50%, #f5a623 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  header p {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.9rem;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 10px;
+  }
+
+  /* ── Controls ── */
+  .controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 12px 28px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .legend {
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .legend-item { display: flex; align-items: center; gap: 7px; }
+  .legend-dot  { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+  .hint {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 1px;
+    color: var(--muted);
+    font-style: italic;
+  }
+  .btn-reset {
+    background: transparent;
+    border: 1px solid var(--red);
+    color: var(--red);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 6px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.18s;
+    white-space: nowrap;
+  }
+  .btn-reset:hover { background: var(--red); color: #fff; }
+
+  /* ── Bracket wrapper ── */
+  .bracket-wrapper {
+    padding: 36px 32px 100px;
+    overflow-x: auto;
+  }
+  .bracket {
+    display: flex;
+    align-items: flex-start;
+    min-width: max-content;
+  }
+
+  /* ── Round column ── */
+  .round-col {
+    display: flex;
+    flex-direction: column;
+    width: 240px;
+    flex-shrink: 0;
+  }
+  .round-header {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.05rem;
+    letter-spacing: 3px;
+    color: var(--accent);
+    text-align: center;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 12px;
+  }
+  .round-matches {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+  }
+
+  /* ── Match block ── */
+  /* Each match block is positioned so its card is vertically centered
+     within the vertical space that corresponds to its paired R1 matches. */
+  .match-block {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 0 10px;
+  }
+
+  /* Game label — sits above the card, no overlap */
+  .game-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.65rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 5px;
+    padding-left: 2px;
+  }
+
+  /* Match card */
+  .match-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    overflow: hidden;
+    transition: border-color 0.18s, box-shadow 0.18s;
+  }
+  .match-card:hover {
+    border-color: #3a4e6e;
+    box-shadow: 0 3px 16px rgba(0,0,0,0.45);
+  }
+
+  /* ── Team slot ── */
+  .team-slot {
+    padding: 10px 14px;
+    min-height: 56px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.14s;
+  }
+  .team-slot + .team-slot {
+    border-top: 1px solid var(--border);
+  }
+  .team-slot:hover:not(.s-bye):not(.s-empty) {
+    background: rgba(245,166,35,0.07);
+  }
+  .team-slot.s-winner { background: rgba(46,204,113,0.1); }
+  .team-slot.s-loser  { opacity: 0.35; }
+  .team-slot.s-bye    { background: var(--bye-bg); cursor: default; }
+  .team-slot.s-empty  { cursor: default; }
+
+  .slot-tag {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.62rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    line-height: 1;
+    margin-bottom: 3px;
+  }
+  .slot-names {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text);
+    line-height: 1.25;
+  }
+  .team-slot.s-winner .slot-names { color: var(--green); }
+  .team-slot.s-bye    .slot-tag   { color: var(--bye-text); opacity: 0.9; }
+  .team-slot.s-bye    .slot-names { color: var(--bye-text); font-weight: 500; font-size: 0.82rem; }
+  .team-slot.s-empty  .slot-names { color: var(--muted); font-weight: 400; font-size: 0.82rem; }
+
+  .win-check {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--green);
+    font-size: 0.9rem;
+    font-weight: 700;
+  }
+
+  /* ── Connector column ── */
+  .connector-col {
+    width: 40px;
+    min-width: 40px;
+    flex-shrink: 0;
+    align-self: stretch;
+    position: relative;
+  }
+
+  /* ── Champion box ── */
+  .champion-col {
+    width: 240px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  .champion-header {
+    height: 40px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.05rem;
+    letter-spacing: 3px;
+    color: var(--accent);
+  }
+  .champion-box {
+    width: 200px;
+    background: linear-gradient(145deg, #12100a, #1d1808);
+    border: 2px solid var(--accent);
+    border-radius: 10px;
+    padding: 26px 16px;
+    text-align: center;
+    box-shadow: 0 0 36px rgba(245,166,35,0.15), inset 0 1px 0 rgba(255,255,255,0.04);
+  }
+  .champ-trophy  { font-size: 2.4rem; display: block; margin-bottom: 12px; filter: drop-shadow(0 0 10px rgba(245,166,35,0.85)); }
+  .champ-label   { font-family: 'Bebas Neue', sans-serif; font-size: 0.8rem; letter-spacing: 4px; color: var(--accent); }
+  .champ-team    { font-family: 'Bebas Neue', sans-serif; font-size: 1.6rem; color: #fff; margin-top: 6px; line-height: 1.1; }
+  .champ-players { font-size: 0.78rem; color: var(--muted); margin-top: 6px; line-height: 1.5; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { height: 5px; width: 5px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="trophy-icon">🏆</span>
+  <h1>Hardy Diagnostics Cornhole Doubles Tournament 2026</h1>
+  <p>Single Elimination &nbsp;·&nbsp; 27 Teams &nbsp;·&nbsp; Random Draw</p>
+</header>
+
+<div class="controls">
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Winner</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--bye-text)"></div>Bye (auto-advance)</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--muted)"></div>TBD</div>
+  </div>
+  <span class="hint">Click a team name to advance them →</span>
+  <button class="btn-reset" onclick="resetBracket()">↺ Reset Bracket</button>
+</div>
+
+<div class="bracket-wrapper">
+  <div class="bracket" id="bracket"></div>
+</div>
+
+<script>
+/* ─── TEAMS ─────────────────────────────────────────────────── */
+const TEAMS = [
+  { id:'T1',  label:'Team 1',  p1:'Alani Vasquez',     p2:'Geo Ruiz' },
+  { id:'T2',  label:'Team 2',  p1:'Wes Koyama',        p2:'Ernesto Diaz' },
+  { id:'T3',  label:'Team 3',  p1:'Byanca Villalba',   p2:'Arturo Villalba' },
+  { id:'T4',  label:'Team 4',  p1:'Isaiah Valdez',     p2:'Maria Pimentel' },
+  { id:'T5',  label:'Team 5',  p1:'Jezi Morales',      p2:'Jerry Moxley' },
+  { id:'T6',  label:'Team 6',  p1:'Michael Bulan',     p2:'Anthony Nunez' },
+  { id:'T7',  label:'Team 7',  p1:'Mike Morris',       p2:'Gavin Kelly' },
+  { id:'T8',  label:'Team 8',  p1:'Edgar Rodriguez',   p2:'Salvador Diaz' },
+  { id:'T9',  label:'Team 9',  p1:'Miles Amby',        p2:'Megan Roesner' },
+  { id:'T11', label:'Team 11', p1:'Raymond Carlyle',   p2:'Carlos Cruz' },
+  { id:'T12', label:'Team 12', p1:'Sarah Susenbach',   p2:'Gabriella Fuentes' },
+  { id:'T13', label:'Team 13', p1:'Brian Tom',         p2:'Kyle Zook' },
+  { id:'T14', label:'Team 14', p1:'Frank Ramirez',     p2:'Jaime Pasos' },
+  { id:'T15', label:'Team 15', p1:'Victoria Regalado', p2:'Vanessa Ramos-Solorio' },
+  { id:'T16', label:'Team 16', p1:'Kelly Blair',       p2:'Arianna Leon' },
+  { id:'T17', label:'Team 17', p1:'Anthony Nunez',     p2:'Michael Bulan' },
+  { id:'T18', label:'Team 18', p1:'Angel Garcia',      p2:'Manuel Saldivar' },
+  { id:'T19', label:'Team 19', p1:'Adam Acosta',       p2:'Daniel Gonzales' },
+  { id:'T20', label:'Team 20', p1:'Gabriel Diaz',      p2:'Fabian Juarez' },
+  { id:'T21', label:'Team 21', p1:'Nadine Cepeda',     p2:'Joey Gonzalez' },
+  { id:'T22', label:'Team 22', p1:'Charles Arandia',   p2:'Emannuel Leon-R' },
+  { id:'T23', label:'Team 23', p1:'Jacob Rosseti',     p2:'Mario Corral' },
+  { id:'T24', label:'Team 24', p1:'Melissa Evans',     p2:'Alynna Duncan' },
+  { id:'T25', label:'Team 25', p1:'Rob Nievez',        p2:'Vanessa Hernandez' },
+  { id:'T26', label:'Team 26', p1:'Bobby Ortiz',       p2:'Josiah Guzman' },
+  { id:'T27', label:'Team 27', p1:'Daniel Vazquez',    p2:'Susana Estrada' },
+];
+
+/* ─── RNG ───────────────────────────────────────────────────── */
+function makeRng(seed) {
+  let s = seed >>> 0;
+  return () => { s = (Math.imul(1664525, s) + 1013904223) >>> 0; return s / 0x100000000; };
+}
+function shuffle(arr, rng) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(rng() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+/* ─── STATE ─────────────────────────────────────────────────── */
+let ST = null;
+
+// Version key — bump this to auto-clear stale data from old versions
+const DATA_VERSION = 'v3';
+(function clearStaleData() {
+  if (localStorage.getItem('hd2026_version') !== DATA_VERSION) {
+    localStorage.removeItem('hd2026_seed');
+    localStorage.removeItem('hd2026_picks');
+    localStorage.setItem('hd2026_version', DATA_VERSION);
+  }
+})();
+
+function getSeed() {
+  let s = localStorage.getItem('hd2026_seed');
+  if (!s) { s = String(Math.random() * 1e9 | 0); localStorage.setItem('hd2026_seed', s); }
+  return parseInt(s);
+}
+
+function buildBracket() {
+  const rng = makeRng(getSeed());
+  const shuffled = shuffle(TEAMS, rng);
+
+  // 27 teams → 32 slots → 5 byes.
+  // Spread byes evenly: every ~5-6 positions gets a bye.
+  // We'll place them at positions 5,11,17,23,29 in the 32-slot array (0-indexed).
+  // Then shuffle the non-bye positions randomly.
+  // This ensures no two byes are adjacent.
+  const BYE_POSITIONS = new Set([4, 10, 16, 22, 28]);
+  const slots = new Array(32).fill(null);
+  let teamIdx = 0;
+  for (let i = 0; i < 32; i++) {
+    if (!BYE_POSITIONS.has(i)) slots[i] = shuffled[teamIdx++];
+    // BYE positions stay null
+  }
+
+  // Build R1: 16 matches
+  const r1 = [];
+  for (let i = 0; i < 16; i++) {
+    const top = slots[i * 2];
+    const bot = slots[i * 2 + 1];
+    const isByeMatch = top === null || bot === null;
+    const autoWinner = top === null ? bot : (bot === null ? top : null);
+    r1.push({
+      id: `R1G${i+1}`,
+      top: top === null ? 'BYE' : top,
+      bottom: bot === null ? 'BYE' : bot,
+      winner: autoWinner,
+      isBye: isByeMatch,
+    });
+  }
+
+  // Build subsequent rounds
+  const rounds = [r1];
+  while (rounds[rounds.length-1].length > 1) {
+    const prev = rounds[rounds.length-1];
+    const rIdx = rounds.length + 1;
+    const next = prev.reduce((acc, m, i) => {
+      if (i % 2 === 0) {
+        acc.push({
+          id: `R${rIdx}G${acc.length+1}`,
+          top: null, bottom: null, winner: null,
+          srcA: prev[i].id, srcB: prev[i+1].id,
+        });
+      }
+      return acc;
+    }, []);
+    rounds.push(next);
+  }
+
+  ST = { rounds };
+
+  // Auto-propagate bye winners
+  r1.forEach(m => { if (m.winner) propagate(m.id, m.winner); });
+
+  // Restore saved picks
+  try {
+    const saved = JSON.parse(localStorage.getItem('hd2026_picks') || '[]');
+    saved.forEach(({ mid, wid }) => {
+      const m = findMatch(mid);
+      if (!m) return;
+      const team = [m.top, m.bottom].find(t => t && t !== 'BYE' && t.id === wid);
+      if (team) { m.winner = team; propagate(mid, team); }
+    });
+  } catch(e) {}
+}
+
+function findMatch(id) {
+  for (const round of ST.rounds)
+    for (const m of round)
+      if (m.id === id) return m;
+  return null;
+}
+
+function propagate(srcId, team) {
+  for (const round of ST.rounds) {
+    for (const m of round) {
+      let changed = false;
+      if (m.srcA === srcId) { m.top    = team; changed = true; }
+      if (m.srcB === srcId) { m.bottom = team; changed = true; }
+      // If a winner was already set for this match but no longer matches either slot, clear it
+      if (changed && m.winner && m.winner !== 'BYE') {
+        const topId = (m.top && m.top !== 'BYE') ? m.top.id : null;
+        const botId = (m.bottom && m.bottom !== 'BYE') ? m.bottom.id : null;
+        if (m.winner.id !== topId && m.winner.id !== botId) {
+          m.winner = null;
+          clearDownstream(m.id);
+        }
+      }
+    }
+  }
+}
+
+function clearDownstream(srcId) {
+  for (const round of ST.rounds) {
+    for (const m of round) {
+      if (m.srcA === srcId) m.top    = null;
+      if (m.srcB === srcId) m.bottom = null;
+      if ((m.srcA === srcId || m.srcB === srcId) && m.winner) {
+        m.winner = null;
+        clearDownstream(m.id);
+      }
+    }
+  }
+}
+
+function savePicks() {
+  const picks = ST.rounds.flat()
+    .filter(m => m.winner && m.winner !== 'BYE')
+    .map(m => ({ mid: m.id, wid: m.winner.id }));
+  localStorage.setItem('hd2026_picks', JSON.stringify(picks));
+}
+
+/* ─── CONFETTI ──────────────────────────────────────────────── */
+const CONFETTI_COLORS = ['#f5a623','#f7dc6f','#2ecc71','#3498db','#e74c3c','#9b59b6','#1abc9c','#ffffff'];
+
+function launchConfetti(originEl, isChampion) {
+  const rect    = originEl.getBoundingClientRect();
+  const originX = rect.left + rect.width  / 2;
+  const originY = rect.top  + rect.height / 2;
+  const count   = isChampion ? 200 : 55;
+
+  const canvas = document.createElement('canvas');
+  canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;';
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+  document.body.appendChild(canvas);
+  const ctx = canvas.getContext('2d');
+
+  const pieces = Array.from({ length: count }, () => {
+    const angle = isChampion
+      ? Math.random() * Math.PI * 2
+      : (Math.random() * Math.PI * 1.2) - Math.PI * 0.6;
+    const speed = isChampion ? (5 + Math.random() * 10) : (3 + Math.random() * 6);
+    const size  = 5 + Math.random() * (isChampion ? 11 : 7);
+    return {
+      x: originX, y: originY,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed - (isChampion ? 3 : 5),
+      rot: Math.random() * 360,
+      rotV: (Math.random() - 0.5) * 14,
+      w: size, h: size * (0.35 + Math.random() * 0.5),
+      color: CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)],
+      alpha: 1,
+      circle: Math.random() > 0.6,
+    };
+  });
+
+  const totalFrames = isChampion ? 160 : 80;
+  let frame = 0;
+
+  function tick() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let anyAlive = false;
+    pieces.forEach(p => {
+      p.vy  += 0.28;
+      p.x   += p.vx;
+      p.y   += p.vy;
+      p.rot += p.rotV;
+      p.alpha = Math.max(0, 1 - frame / totalFrames);
+      if (p.alpha > 0.01) anyAlive = true;
+      ctx.save();
+      ctx.globalAlpha = p.alpha;
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.rot * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      if (p.circle) {
+        ctx.beginPath();
+        ctx.arc(0, 0, p.w / 2, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+      }
+      ctx.restore();
+    });
+    frame++;
+    if (anyAlive) requestAnimationFrame(tick);
+    else canvas.remove();
+  }
+  requestAnimationFrame(tick);
+}
+
+/* ─── INTERACTION ───────────────────────────────────────────── */
+function clickSlot(matchId, slot) {
+  const m = findMatch(matchId);
+  if (!m) return;
+  const team = slot === 'top' ? m.top : m.bottom;
+  if (!team || team === 'BYE') return;
+
+  if (m.winner?.id === team.id) {
+    m.winner = null;
+    clearDownstream(matchId);
+    savePicks();
+    render();
+  } else {
+    m.winner = team;
+    propagate(matchId, team);
+    savePicks();
+    render();
+
+    // Fire confetti from the winning slot after DOM updates
+    requestAnimationFrame(() => {
+      const card = document.querySelector(`[data-id="${matchId}"]`);
+      const slotEls = card ? card.querySelectorAll('.team-slot') : [];
+      const origin  = slotEls[slot === 'top' ? 0 : 1] || card || document.getElementById('bracket');
+      const isChamp = ST.rounds[ST.rounds.length - 1][0]?.id === matchId;
+      launchConfetti(origin, isChamp);
+    });
+  }
+}
+
+function resetBracket() {
+  if (!confirm('Reset entire bracket? All picks and the random draw will be cleared.')) return;
+  localStorage.removeItem('hd2026_seed');
+  localStorage.removeItem('hd2026_picks');
+  localStorage.removeItem('hd2026_version');
+  buildBracket();
+  render();
+}
+
+/* ─── RENDER ────────────────────────────────────────────────── */
+const ROUND_NAMES = ['Round 1', 'Round 2', 'Quarterfinals', 'Semifinals', 'Championship'];
+
+// Fixed heights (px) — consistent across all rounds
+const SLOT_H    = 56;   // height of one team slot
+const MATCH_H   = SLOT_H * 2 + 1; // match card total height
+const LABEL_H   = 24;  // game label height
+const GAP_R1    = 20;  // gap between match blocks in R1
+// Full height one R1 match block occupies in the column:
+const BLOCK_H   = LABEL_H + MATCH_H + GAP_R1;
+
+function render() {
+  const el = document.getElementById('bracket');
+  el.innerHTML = '';
+
+  ST.rounds.forEach((round, ri) => {
+    // Each match in round ri spans 2^ri R1 blocks vertically
+    const span      = Math.pow(2, ri);
+    const blockSpan = span * BLOCK_H; // total height for this match
+
+    const col = document.createElement('div');
+    col.className = 'round-col';
+
+    // Header
+    const hdr = document.createElement('div');
+    hdr.className = 'round-header';
+    hdr.textContent = ROUND_NAMES[ri] || `Round ${ri+1}`;
+    col.appendChild(hdr);
+
+    // Matches
+    const matchesEl = document.createElement('div');
+    matchesEl.className = 'round-matches';
+
+    round.forEach((match, mi) => {
+      const block = document.createElement('div');
+      block.className = 'match-block';
+      block.style.height = `${blockSpan}px`;
+
+      // Game label
+      const lbl = document.createElement('div');
+      lbl.className = 'game-label';
+      lbl.textContent = `Game ${mi + 1}`;
+      block.appendChild(lbl);
+
+      // Card
+      const card = document.createElement('div');
+      card.className = 'match-card';
+      card.setAttribute('data-id', match.id);
+      card.appendChild(buildSlot(match, 'top'));
+      card.appendChild(buildSlot(match, 'bottom'));
+      block.appendChild(card);
+
+      matchesEl.appendChild(block);
+    });
+
+    col.appendChild(matchesEl);
+    el.appendChild(col);
+
+    // Connector column after each round except the last
+    if (ri < ST.rounds.length - 1) {
+      const conn = document.createElement('div');
+      conn.className = 'connector-col';
+      conn.setAttribute('data-ri', ri);
+      el.appendChild(conn);
+    }
+  });
+
+  // Champion display
+  const finalWinner = ST.rounds[ST.rounds.length - 1][0]?.winner;
+  const champCol = document.createElement('div');
+  champCol.className = 'champion-col';
+  champCol.innerHTML = `
+    <div class="champion-header">Champion</div>
+    <div class="champion-box">
+      <span class="champ-trophy">🏆</span>
+      <div class="champ-label">Champion</div>
+      <div class="champ-team">${finalWinner ? finalWinner.label : 'TBD'}</div>
+      <div class="champ-players">${finalWinner ? `${finalWinner.p1}<br>${finalWinner.p2}` : ''}</div>
+    </div>`;
+  el.appendChild(champCol);
+
+  setTimeout(drawConnectors, 40);
+}
+
+function buildSlot(match, slot) {
+  const raw      = slot === 'top' ? match.top : match.bottom;
+  // Normalize: treat undefined/null as empty, 'BYE' string as bye, anything else as a team object
+  const isBye    = raw === 'BYE';
+  const isEmpty  = raw === null || raw === undefined;
+  const team     = (!isBye && !isEmpty) ? raw : null;
+  const isWinner = team && match.winner && match.winner !== 'BYE' && match.winner.id === team.id;
+  const isLoser  = team && match.winner && match.winner !== 'BYE' && match.winner.id !== team.id;
+
+  const div = document.createElement('div');
+  div.className = 'team-slot' +
+    (isBye    ? ' s-bye'    : '') +
+    (isEmpty  ? ' s-empty'  : '') +
+    (isWinner ? ' s-winner' : '') +
+    (isLoser  ? ' s-loser'  : '');
+  div.style.minHeight = `${SLOT_H}px`;
+
+  if (isBye) {
+    div.innerHTML = `<div class="slot-tag">Bye</div><div class="slot-names">Auto-Advance ✓</div>`;
+  } else if (isEmpty) {
+    div.innerHTML = `<div class="slot-names">TBD</div>`;
+  } else {
+    div.innerHTML = `
+      <div class="slot-tag">${team.label}</div>
+      <div class="slot-names">${team.p1} &amp; ${team.p2}</div>
+      ${isWinner ? '<span class="win-check">✓</span>' : ''}`;
+    div.addEventListener('click', () => clickSlot(match.id, slot));
+    div.title = `Click to advance ${team.label}`;
+  }
+
+  return div;
+}
+
+/* ─── SVG CONNECTORS ────────────────────────────────────────── */
+function drawConnectors() {
+  document.querySelectorAll('.connector-svg').forEach(e => e.remove());
+
+  const bracketEl  = document.getElementById('bracket');
+  const roundCols  = [...bracketEl.querySelectorAll('.round-col')];
+  const connCols   = [...bracketEl.querySelectorAll('.connector-col')];
+
+  connCols.forEach((col, ri) => {
+    const fromCol = roundCols[ri];
+    const toCol   = roundCols[ri + 1];
+    if (!fromCol || !toCol) return;
+
+    const fromCards = [...fromCol.querySelectorAll('.match-card')];
+    const toCards   = [...toCol.querySelectorAll('.match-card')];
+
+    const colRect = col.getBoundingClientRect();
+    if (colRect.height < 1) return;
+
+    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.classList.add('connector-svg');
+    svg.style.cssText = `position:absolute;top:0;left:0;width:${colRect.width}px;height:${colRect.height}px;overflow:visible;pointer-events:none;`;
+    col.appendChild(svg);
+
+    const COLOR = '#2e3d55';
+    const W     = '1.5';
+
+    function ln(x1, y1, x2, y2) {
+      const l = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+      l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+      l.setAttribute('stroke', COLOR); l.setAttribute('stroke-width', W);
+      l.setAttribute('stroke-linecap', 'round');
+      svg.appendChild(l);
+    }
+
+    toCards.forEach((toCard, i) => {
+      const c1 = fromCards[i * 2];
+      const c2 = fromCards[i * 2 + 1];
+      if (!c1 || !c2 || !toCard) return;
+
+      const top   = colRect.top;
+      const y1    = c1.getBoundingClientRect().top    + c1.getBoundingClientRect().height / 2 - top;
+      const y2    = c2.getBoundingClientRect().top    + c2.getBoundingClientRect().height / 2 - top;
+      const yn    = toCard.getBoundingClientRect().top + toCard.getBoundingClientRect().height / 2 - top;
+      const ymid  = (y1 + y2) / 2;
+      const xL    = 0;
+      const xMid  = colRect.width / 2;
+      const xR    = colRect.width;
+
+      ln(xL,   y1,   xMid, y1);    // left card top → midpoint
+      ln(xL,   y2,   xMid, y2);    // left card bottom → midpoint
+      ln(xMid, y1,   xMid, y2);    // vertical bridge
+      ln(xMid, ymid, xR,   ymid);  // center → right
+    });
+  });
+}
+
+window.addEventListener('resize', () => { drawConnectors(); });
+
+/* ─── INIT ──────────────────────────────────────────────────── */
+buildBracket();
+render();
+</script>
+</body>
+</html>
