@@ -5,6 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Hardy Diagnostics Cornhole Doubles Tournament 2026</title>
 <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow+Condensed:wght@400;600;700&family=Barlow:wght@400;500&display=swap" rel="stylesheet">
+<!-- Firebase SDKs -->
+<script type="module">
+import { initializeApp }                        from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getFirestore, doc, setDoc, onSnapshot, getDoc }
+                                                from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey:            "AIzaSyAyT1KNeWPEbhCSAO5K33iQmwBjHMw_awE",
+  authDomain:        "cornholedoublestournament-2026.firebaseapp.com",
+  projectId:         "cornholedoublestournament-2026",
+  storageBucket:     "cornholedoublestournament-2026.firebasestorage.app",
+  messagingSenderId: "998672163064",
+  appId:             "1:998672163064:web:1789a449b9f75c1201db0d"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+const BRACKET_DOC = doc(db, 'bracket', 'state');
+
+// ── Expose Firebase helpers to global scope so non-module code can call them ──
+window._fbSave = async function(data) {
+  try { await setDoc(BRACKET_DOC, data); } catch(e) { console.error('Firestore save error:', e); }
+};
+
+window._fbListen = function(callback) {
+  onSnapshot(BRACKET_DOC, snap => {
+    if (snap.exists()) callback(snap.data());
+  });
+};
+
+window._fbGet = async function() {
+  try {
+    const snap = await getDoc(BRACKET_DOC);
+    return snap.exists() ? snap.data() : null;
+  } catch(e) { console.error('Firestore get error:', e); return null; }
+};
+
+// Signal that Firebase is ready
+window._fbReady = true;
+document.dispatchEvent(new Event('fbReady'));
+</script>
 <style>
   :root {
     --bg:       #0e1117;
@@ -552,26 +593,19 @@ function shuffle(arr, rng) {
 }
 
 /* ─── STATE ─────────────────────────────────────────────────── */
-let ST = null;
+let ST        = null;
+let _ignoreNext = false; // prevent echo when we save our own write
 
-// Version key — bump this to auto-clear stale data from old versions
-const DATA_VERSION = 'v3';
-(function clearStaleData() {
-  if (localStorage.getItem('hd2026_version') !== DATA_VERSION) {
-    localStorage.removeItem('hd2026_seed');
-    localStorage.removeItem('hd2026_picks');
-    localStorage.setItem('hd2026_version', DATA_VERSION);
-  }
-})();
-
-function getSeed() {
-  let s = localStorage.getItem('hd2026_seed');
-  if (!s) { s = String(Math.random() * 1e9 | 0); localStorage.setItem('hd2026_seed', s); }
-  return parseInt(s);
+function getSeed(savedSeed) {
+  // Use seed from Firestore if available, otherwise generate new one
+  if (savedSeed) return parseInt(savedSeed);
+  return Math.random() * 1e9 | 0;
 }
 
-function buildBracket() {
-  const rng = makeRng(getSeed());
+function buildBracket(seedValue) {
+  const computedSeed = getSeed(seedValue);
+  const rng = makeRng(computedSeed);
+  window._currentSeed = computedSeed; // store so we can save to Firestore
   const shuffled = shuffle(TEAMS, rng);
 
   // 27 teams → 32 slots → 5 byes.
@@ -626,16 +660,7 @@ function buildBracket() {
   // Auto-propagate bye winners
   r1.forEach(m => { if (m.winner) propagate(m.id, m.winner); });
 
-  // Restore saved picks
-  try {
-    const saved = JSON.parse(localStorage.getItem('hd2026_picks') || '[]');
-    saved.forEach(({ mid, wid }) => {
-      const m = findMatch(mid);
-      if (!m) return;
-      const team = [m.top, m.bottom].find(t => t && t !== 'BYE' && t.id === wid);
-      if (team) { m.winner = team; propagate(mid, team); }
-    });
-  } catch(e) {}
+  // Picks are restored separately via Firestore in applyFirestoreState()
 }
 
 function findMatch(id) {
@@ -643,6 +668,22 @@ function findMatch(id) {
     for (const m of round)
       if (m.id === id) return m;
   return null;
+}
+
+function applyFirestoreState(data) {
+  // Rebuild bracket with the saved seed so team order matches
+  buildBracket(data.seed);
+
+  // Replay saved picks
+  const picks = data.picks || [];
+  picks.forEach(({ mid, wid }) => {
+    const m = findMatch(mid);
+    if (!m) return;
+    const team = [m.top, m.bottom].find(t => t && t !== 'BYE' && t.id === wid);
+    if (team) { m.winner = team; propagate(mid, team); }
+  });
+
+  render();
 }
 
 function propagate(srcId, team) {
@@ -678,10 +719,13 @@ function clearDownstream(srcId) {
 }
 
 function savePicks() {
+  if (!window._fbSave) return;
   const picks = ST.rounds.flat()
     .filter(m => m.winner && m.winner !== 'BYE')
     .map(m => ({ mid: m.id, wid: m.winner.id }));
-  localStorage.setItem('hd2026_picks', JSON.stringify(picks));
+  const data = { seed: String(window._currentSeed), picks };
+  _ignoreNext = true;
+  window._fbSave(data);
 }
 
 /* ─── LOCK / PASSWORD ───────────────────────────────────────── */
@@ -1082,11 +1126,13 @@ function clickSlot(matchId, slot) {
 function resetBracket() {
   if (!isUnlocked) return;
   if (!confirm('Reset entire bracket? All picks and the random draw will be cleared.')) return;
-  localStorage.removeItem('hd2026_seed');
-  localStorage.removeItem('hd2026_picks');
-  localStorage.removeItem('hd2026_version');
-  buildBracket();
+  buildBracket(); // generates fresh seed stored in window._currentSeed
   render();
+  // Save fresh empty state to Firestore
+  if (window._fbSave) {
+    _ignoreNext = true;
+    window._fbSave({ seed: String(window._currentSeed), picks: [] });
+  }
 }
 
 /* ─── RENDER ────────────────────────────────────────────────── */
@@ -1280,11 +1326,44 @@ function drawConnectors() {
 window.addEventListener('resize', () => { drawConnectors(); });
 
 /* ─── INIT ──────────────────────────────────────────────────── */
-buildBracket();
-render();
-checkSession();
-// Start in locked state visually
-document.getElementById('bracket').classList.add('bracket-locked');
+// Show a loading state while Firebase connects
+document.getElementById('bracket').innerHTML =
+  '<div style="padding:60px;text-align:center;color:var(--muted);font-family:'Barlow Condensed',sans-serif;font-size:1.1rem;letter-spacing:2px;">CONNECTING TO LIVE BRACKET...</div>';
+
+function initApp(firestoreData) {
+  if (firestoreData) {
+    applyFirestoreState(firestoreData);
+  } else {
+    // No data in Firestore yet — build fresh and save
+    buildBracket();
+    render();
+    if (window._fbSave) {
+      window._fbSave({ seed: String(window._currentSeed), picks: [] });
+    }
+  }
+
+  checkSession();
+  document.getElementById('bracket').classList.add('bracket-locked');
+
+  // ── Real-time listener: update all viewers when state changes ──
+  if (window._fbListen) {
+    window._fbListen(data => {
+      if (_ignoreNext) { _ignoreNext = false; return; } // skip our own write echo
+      applyFirestoreState(data);
+      // Re-apply lock class after render
+      if (!isUnlocked) document.getElementById('bracket').classList.add('bracket-locked');
+    });
+  }
+}
+
+// Wait for Firebase to be ready, then load state
+if (window._fbReady) {
+  window._fbGet().then(initApp);
+} else {
+  document.addEventListener('fbReady', () => {
+    window._fbGet().then(initApp);
+  });
+}
 </script>
 </body>
 </html>
