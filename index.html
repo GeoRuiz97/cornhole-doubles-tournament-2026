@@ -147,6 +147,26 @@ document.dispatchEvent(new Event('fbReady'));
     white-space: nowrap;
   }
   .btn-reset:hover { background: var(--red); color: #fff; }
+  .btn-reshuffle {
+    background: transparent;
+    border: 1px solid #3d9bd4;
+    color: #3d9bd4;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 6px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.18s;
+    white-space: nowrap;
+  }
+  .btn-reshuffle:hover { background: #3d9bd4; color: #fff; }
+  .btn-reshuffle:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
   /* ── Lock button ── */
   .lock-area {
     display: flex;
@@ -520,6 +540,7 @@ document.dispatchEvent(new Event('fbReady'));
   </div>
   <span class="hint" id="lockHint">🔒 Bracket is locked — view only</span>
   <div style="display:flex;align-items:center;gap:14px;">
+    <button class="btn-reshuffle" id="reshuffleBtn" onclick="reshuffleBracket()" disabled>⇄ Re-Shuffle</button>
     <button class="btn-reset" id="resetBtn" onclick="resetBracket()" disabled>↺ Reset Bracket</button>
     <div class="lock-area" id="lockArea">
       <button class="btn-lock" onclick="toggleLock()" title="Lock / Unlock bracket editing">
@@ -749,6 +770,7 @@ function applyUnlock() {
   document.getElementById('lockArea').classList.add('unlocked');
   document.getElementById('lockHint').textContent   = '🔓 Bracket editing enabled';
   document.getElementById('resetBtn').disabled      = false;
+  document.getElementById('reshuffleBtn').disabled  = false;
   document.getElementById('bracket').classList.remove('bracket-locked');
 
   // Auto-lock after 30 min
@@ -766,6 +788,7 @@ function lock() {
   document.getElementById('lockArea').classList.remove('unlocked');
   document.getElementById('lockHint').textContent   = '🔒 Bracket is locked — view only';
   document.getElementById('resetBtn').disabled      = true;
+  document.getElementById('reshuffleBtn').disabled  = true;
   document.getElementById('bracket').classList.add('bracket-locked');
 }
 
@@ -1125,10 +1148,22 @@ function clickSlot(matchId, slot) {
 
 function resetBracket() {
   if (!isUnlocked) return;
-  if (!confirm('Reset entire bracket? All picks and the random draw will be cleared.')) return;
-  buildBracket(); // generates fresh seed stored in window._currentSeed
+  if (!confirm('Reset bracket progression? Team matchups will stay the same, but all results will be cleared.')) return;
+  // Rebuild with the SAME seed — keeps team order, clears all picks
+  buildBracket(window._currentSeed);
   render();
-  // Save fresh empty state to Firestore
+  if (window._fbSave) {
+    _ignoreNext = true;
+    window._fbSave({ seed: String(window._currentSeed), picks: [] });
+  }
+}
+
+function reshuffleBracket() {
+  if (!isUnlocked) return;
+  if (!confirm('Re-shuffle teams? This will randomize all matchups and clear all results.')) return;
+  // Build with NO seed — generates a brand new random seed
+  buildBracket();
+  render();
   if (window._fbSave) {
     _ignoreNext = true;
     window._fbSave({ seed: String(window._currentSeed), picks: [] });
