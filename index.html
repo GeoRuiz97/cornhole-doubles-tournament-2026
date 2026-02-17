@@ -106,6 +106,152 @@
     white-space: nowrap;
   }
   .btn-reset:hover { background: var(--red); color: #fff; }
+  /* ── Lock button ── */
+  .lock-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-lock {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    padding: 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    transition: transform 0.15s;
+  }
+  .btn-lock:hover { transform: scale(1.12); }
+  .lock-icon {
+    font-size: 1.6rem;
+    line-height: 1;
+    filter: drop-shadow(0 0 4px rgba(245,166,35,0.4));
+    transition: all 0.25s;
+  }
+  .lock-status {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    transition: color 0.25s;
+  }
+  .lock-area.unlocked .lock-status { color: var(--green); }
+  .lock-area.unlocked .lock-icon   { filter: drop-shadow(0 0 6px rgba(46,204,113,0.6)); }
+
+  /* Locked overlay on slots */
+  .bracket-locked .team-slot:not(.s-bye):not(.s-empty) {
+    cursor: not-allowed !important;
+  }
+  .btn-reset:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
+  }
+
+  /* Password modal */
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    z-index: 10000;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .modal-overlay.visible { display: flex; }
+  .modal-box {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 36px 32px 28px;
+    width: 320px;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+    animation: modalPop 0.2s ease;
+  }
+  @keyframes modalPop {
+    from { transform: scale(0.88); opacity: 0; }
+    to   { transform: scale(1);    opacity: 1; }
+  }
+  .modal-lock-icon { font-size: 2.4rem; margin-bottom: 12px; display: block; }
+  .modal-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 3px;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .modal-sub {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.82rem;
+    color: var(--muted);
+    letter-spacing: 1px;
+    margin-bottom: 20px;
+  }
+  .modal-input {
+    width: 100%;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: 'Barlow', sans-serif;
+    font-size: 1rem;
+    padding: 10px 14px;
+    text-align: center;
+    letter-spacing: 3px;
+    outline: none;
+    transition: border-color 0.18s;
+    margin-bottom: 8px;
+  }
+  .modal-input:focus { border-color: var(--accent); }
+  .modal-input.error { border-color: var(--red); animation: shake 0.3s ease; }
+  @keyframes shake {
+    0%,100% { transform: translateX(0); }
+    25%      { transform: translateX(-8px); }
+    75%      { transform: translateX(8px); }
+  }
+  .modal-error {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.78rem;
+    color: var(--red);
+    letter-spacing: 1px;
+    min-height: 18px;
+    margin-bottom: 14px;
+  }
+  .modal-btn {
+    width: 100%;
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: #000;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.1rem;
+    letter-spacing: 3px;
+    padding: 10px;
+    cursor: pointer;
+    transition: opacity 0.18s;
+  }
+  .modal-btn:hover { opacity: 0.85; }
+  .modal-cancel {
+    display: block;
+    margin-top: 12px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.78rem;
+    color: var(--muted);
+    letter-spacing: 1px;
+    cursor: pointer;
+    text-decoration: underline;
+    background: none;
+    border: none;
+    width: 100%;
+  }
+  .modal-cancel:hover { color: var(--text); }
+
 
   /* ── Bracket wrapper ── */
   .bracket-wrapper {
@@ -287,14 +433,36 @@
   <p>Single Elimination &nbsp;·&nbsp; 27 Teams &nbsp;·&nbsp; Random Draw</p>
 </header>
 
+<!-- Password Modal -->
+<div class="modal-overlay" id="pwModal">
+  <div class="modal-box">
+    <span class="modal-lock-icon">🔒</span>
+    <div class="modal-title">Enter Password</div>
+    <div class="modal-sub">Admin access required</div>
+    <input class="modal-input" id="pwInput" type="password" placeholder="••••••••••••••"
+      onkeydown="if(event.key==='Enter') submitPassword()" autocomplete="off" />
+    <div class="modal-error" id="pwError"></div>
+    <button class="modal-btn" onclick="submitPassword()">Unlock</button>
+    <button class="modal-cancel" onclick="closeModal()">Cancel</button>
+  </div>
+</div>
+
 <div class="controls">
   <div class="legend">
     <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>Winner</div>
     <div class="legend-item"><div class="legend-dot" style="background:var(--bye-text)"></div>Bye (auto-advance)</div>
     <div class="legend-item"><div class="legend-dot" style="background:var(--muted)"></div>TBD</div>
   </div>
-  <span class="hint">Click a team name to advance them →</span>
-  <button class="btn-reset" onclick="resetBracket()">↺ Reset Bracket</button>
+  <span class="hint" id="lockHint">🔒 Bracket is locked — view only</span>
+  <div style="display:flex;align-items:center;gap:14px;">
+    <button class="btn-reset" id="resetBtn" onclick="resetBracket()" disabled>↺ Reset Bracket</button>
+    <div class="lock-area" id="lockArea">
+      <button class="btn-lock" onclick="toggleLock()" title="Lock / Unlock bracket editing">
+        <span class="lock-icon" id="lockIcon">🔒</span>
+        <span class="lock-status" id="lockStatus">Locked</span>
+      </button>
+    </div>
+  </div>
 </div>
 
 <div class="bracket-wrapper">
@@ -479,6 +647,87 @@ function savePicks() {
   localStorage.setItem('hd2026_picks', JSON.stringify(picks));
 }
 
+/* ─── LOCK / PASSWORD ───────────────────────────────────────── */
+const PASSWORD     = 'WellnessPeeps';
+const SESSION_MS   = 30 * 60 * 1000; // 30 minutes
+let   isUnlocked   = false;
+let   lockTimer    = null;
+
+function checkSession() {
+  const exp = localStorage.getItem('hd2026_unlock_exp');
+  if (exp && Date.now() < parseInt(exp)) {
+    applyUnlock();
+  }
+}
+
+function applyUnlock() {
+  isUnlocked = true;
+  document.getElementById('lockIcon').textContent   = '🔓';
+  document.getElementById('lockStatus').textContent = 'Unlocked';
+  document.getElementById('lockArea').classList.add('unlocked');
+  document.getElementById('lockHint').textContent   = '🔓 Bracket editing enabled';
+  document.getElementById('resetBtn').disabled      = false;
+  document.getElementById('bracket').classList.remove('bracket-locked');
+
+  // Auto-lock after 30 min
+  if (lockTimer) clearTimeout(lockTimer);
+  lockTimer = setTimeout(lock, SESSION_MS);
+}
+
+function lock() {
+  isUnlocked = false;
+  localStorage.removeItem('hd2026_unlock_exp');
+  if (lockTimer) clearTimeout(lockTimer);
+  document.getElementById('lockIcon').textContent   = '🔒';
+  document.getElementById('lockStatus').textContent = 'Locked';
+  document.getElementById('lockArea').classList.remove('unlocked');
+  document.getElementById('lockHint').textContent   = '🔒 Bracket is locked — view only';
+  document.getElementById('resetBtn').disabled      = true;
+  document.getElementById('bracket').classList.add('bracket-locked');
+}
+
+function toggleLock() {
+  if (isUnlocked) {
+    lock();
+  } else {
+    openModal();
+  }
+}
+
+function openModal() {
+  document.getElementById('pwInput').value = '';
+  document.getElementById('pwError').textContent = '';
+  document.getElementById('pwInput').classList.remove('error');
+  document.getElementById('pwModal').classList.add('visible');
+  setTimeout(() => document.getElementById('pwInput').focus(), 80);
+}
+
+function closeModal() {
+  document.getElementById('pwModal').classList.remove('visible');
+}
+
+function submitPassword() {
+  const val = document.getElementById('pwInput').value;
+  if (val === PASSWORD) {
+    const exp = Date.now() + SESSION_MS;
+    localStorage.setItem('hd2026_unlock_exp', exp);
+    closeModal();
+    applyUnlock();
+  } else {
+    const inp = document.getElementById('pwInput');
+    inp.classList.remove('error');
+    void inp.offsetWidth; // restart animation
+    inp.classList.add('error');
+    document.getElementById('pwError').textContent = 'Incorrect password. Try again.';
+    inp.value = '';
+  }
+}
+
+// Close modal if clicking outside the box
+document.getElementById('pwModal').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
 /* ─── CONFETTI ──────────────────────────────────────────────── */
 const CONFETTI_COLORS = ['#f5a623','#f7dc6f','#2ecc71','#3498db','#e74c3c','#9b59b6','#1abc9c','#ffffff'];
 
@@ -550,6 +799,7 @@ function launchConfetti(originEl, isChampion) {
 
 /* ─── INTERACTION ───────────────────────────────────────────── */
 function clickSlot(matchId, slot) {
+  if (!isUnlocked) return; // bracket is locked
   const m = findMatch(matchId);
   if (!m) return;
   const team = slot === 'top' ? m.top : m.bottom;
@@ -578,6 +828,7 @@ function clickSlot(matchId, slot) {
 }
 
 function resetBracket() {
+  if (!isUnlocked) return;
   if (!confirm('Reset entire bracket? All picks and the random draw will be cleared.')) return;
   localStorage.removeItem('hd2026_seed');
   localStorage.removeItem('hd2026_picks');
@@ -766,6 +1017,9 @@ window.addEventListener('resize', () => { drawConnectors(); });
 /* ─── INIT ──────────────────────────────────────────────────── */
 buildBracket();
 render();
+checkSession();
+// Start in locked state visually
+document.getElementById('bracket').classList.add('bracket-locked');
 </script>
 </body>
 </html>
