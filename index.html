@@ -388,7 +388,7 @@
 
   /* ── Champion box ── */
   .champion-col {
-    width: 280px;
+    width: 420px;
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
@@ -397,30 +397,43 @@
   }
   .champion-header {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.1rem;
-    letter-spacing: 3px;
+    font-size: 1.3rem;
+    letter-spacing: 4px;
     color: var(--accent);
-    margin-bottom: 14px;
+    margin-bottom: 18px;
     text-align: center;
   }
   .champion-box {
-    width: 250px;
-    background: linear-gradient(145deg, #12100a, #1f1a06);
-    border: 2px solid var(--accent);
-    border-radius: 14px;
-    padding: 32px 22px;
+    width: 380px;
+    background: linear-gradient(145deg, #15110a, #241c08, #1a1404);
+    border: 3px solid var(--accent);
+    border-radius: 20px;
+    padding: 48px 36px;
     text-align: center;
-    box-shadow: 0 0 50px rgba(245,166,35,0.22), 0 0 12px rgba(245,166,35,0.1), inset 0 1px 0 rgba(255,255,255,0.05);
-    transition: box-shadow 0.4s;
+    box-shadow: 0 0 60px rgba(245,166,35,0.25), 0 0 16px rgba(245,166,35,0.12), inset 0 1px 0 rgba(255,255,255,0.06);
+    transition: box-shadow 0.5s, border-color 0.5s;
   }
   .champion-box.crowned {
-    box-shadow: 0 0 70px rgba(245,166,35,0.5), 0 0 24px rgba(245,166,35,0.3), inset 0 1px 0 rgba(255,255,255,0.08);
+    box-shadow: 0 0 110px rgba(245,166,35,0.7), 0 0 44px rgba(245,166,35,0.45), 0 0 10px rgba(247,220,111,0.5), inset 0 1px 0 rgba(255,255,255,0.1);
     border-color: #f7dc6f;
+    animation: champPulse 2s ease-in-out infinite;
   }
-  .champ-trophy  { font-size: 3rem; display: block; margin-bottom: 14px; filter: drop-shadow(0 0 14px rgba(245,166,35,0.9)); }
-  .champ-label   { font-family: 'Bebas Neue', sans-serif; font-size: 0.82rem; letter-spacing: 5px; color: var(--accent); }
-  .champ-team    { font-family: 'Bebas Neue', sans-serif; font-size: 2rem; color: #fff; margin-top: 8px; line-height: 1.1; }
-  .champ-players { font-size: 0.85rem; color: var(--muted); margin-top: 8px; line-height: 1.6; }
+  @keyframes champPulse {
+    0%, 100% { box-shadow: 0 0 110px rgba(245,166,35,0.7), 0 0 44px rgba(245,166,35,0.45), inset 0 1px 0 rgba(255,255,255,0.1); }
+    50%       { box-shadow: 0 0 150px rgba(245,166,35,0.9), 0 0 70px rgba(245,166,35,0.6), inset 0 1px 0 rgba(255,255,255,0.14); }
+  }
+  .champ-trophy { font-size: 5rem; display: block; margin-bottom: 20px; filter: drop-shadow(0 0 22px rgba(245,166,35,1)); transition: transform 0.4s; }
+  .champ-trophy.pop { animation: trophyBounce 0.65s ease forwards; }
+  @keyframes trophyBounce {
+    0%   { transform: scale(1); }
+    40%  { transform: scale(1.4) rotate(-8deg); }
+    70%  { transform: scale(0.9) rotate(4deg); }
+    100% { transform: scale(1.15); }
+  }
+  .champ-label   { font-family: 'Bebas Neue', sans-serif; font-size: 1rem; letter-spacing: 7px; color: var(--accent); }
+  .champ-divider { width: 70px; height: 2px; background: linear-gradient(90deg, transparent, var(--accent), transparent); margin: 14px auto; border: none; }
+  .champ-team    { font-family: 'Bebas Neue', sans-serif; font-size: 3.2rem; color: #fff; margin-top: 6px; line-height: 1.05; text-shadow: 0 0 24px rgba(245,166,35,0.45); }
+  .champ-players { font-size: 1.05rem; color: #c8d0dd; margin-top: 12px; line-height: 1.8; }
 
   /* scrollbar */
   ::-webkit-scrollbar { height: 5px; width: 5px; }
@@ -824,6 +837,8 @@ function launchChampionCelebration() {
   // Glow the champion box
   const box = document.getElementById('champBox');
   if (box) box.classList.add('crowned');
+  const trophy = document.getElementById('champTrophy');
+  if (trophy) { trophy.classList.remove('pop'); void trophy.offsetWidth; trophy.classList.add('pop'); }
 
   const canvas = document.createElement('canvas');
   canvas.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:9999;';
@@ -840,7 +855,7 @@ function launchChampionCelebration() {
   let rockets   = [];
   let bags      = [];
   let frame     = 0;
-  const TOTAL   = 420; // ~7 seconds at 60fps
+  const TOTAL   = 900; // ~15 seconds at 60fps
 
   function makeRocket() {
     const x = W * (0.15 + Math.random() * 0.7);
@@ -905,15 +920,15 @@ function launchChampionCelebration() {
 
   // Schedule rockets
   const rocketSchedule = [];
-  for (let i = 0; i < 14; i++) {
-    rocketSchedule.push(Math.floor(Math.random() * (TOTAL - 60)));
+  for (let i = 0; i < 30; i++) {
+    rocketSchedule.push(Math.floor(Math.random() * (TOTAL - 80)));
   }
   rocketSchedule.sort((a,b) => a - b);
 
   // Schedule bags
   const bagSchedule = [];
-  for (let i = 0; i < 10; i++) {
-    bagSchedule.push(Math.floor(Math.random() * (TOTAL - 30)));
+  for (let i = 0; i < 22; i++) {
+    bagSchedule.push(Math.floor(Math.random() * (TOTAL - 40)));
   }
 
   function drawBag(ctx, b) {
@@ -1154,8 +1169,9 @@ function render() {
       champCol.innerHTML = `
         <div class="champion-header">🏆 Champion</div>
         <div class="champion-box" id="champBox">
-          <span class="champ-trophy">🏆</span>
+          <span class="champ-trophy" id="champTrophy">🏆</span>
           <div class="champ-label">Tournament Champion</div>
+          <hr class="champ-divider">
           <div class="champ-team">${finalWinner ? finalWinner.label : 'TBD'}</div>
           <div class="champ-players">${finalWinner ? `${finalWinner.p1}<br>${finalWinner.p2}` : '<span style="color:var(--muted);font-size:0.82rem;">Awaiting finalist</span>'}</div>
         </div>`;
