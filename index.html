@@ -144,7 +144,11 @@
 
   /* Locked overlay on slots */
   .bracket-locked .team-slot:not(.s-bye):not(.s-empty) {
-    cursor: not-allowed !important;
+    cursor: not-allowed;
+  }
+  /* When unlocked, always show pointer on clickable slots */
+  .team-slot:not(.s-bye):not(.s-empty) {
+    cursor: pointer;
   }
   .btn-reset:disabled {
     opacity: 0.3;
