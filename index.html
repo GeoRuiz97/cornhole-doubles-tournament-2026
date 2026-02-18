@@ -8,7 +8,7 @@
 <!-- Firebase SDKs -->
 <script type="module">
 import { initializeApp }                        from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot, getDoc }
+import { getFirestore, doc, setDoc, onSnapshot, getDoc, deleteDoc }
                                                 from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const firebaseConfig = {
@@ -62,6 +62,14 @@ window._fbGetPrediction = async function(name) {
     const snap = await getDoc(doc(db, PREDS_COL, docId));
     return snap.exists() ? { id: snap.id, ...snap.data() } : null;
   } catch(e) { return null; }
+};
+
+// Delete a prediction by doc ID
+window._fbDeletePrediction = async function(docId) {
+  try {
+    await deleteDoc(doc(db, PREDS_COL, docId));
+    return true;
+  } catch(e) { console.error('Prediction delete error:', e); return false; }
 };
 
 window._fbListenPredictions = function(callback) {
@@ -946,6 +954,21 @@ document.dispatchEvent(new Event('fbReady'));
     padding: 20px 0;
     font-style: italic;
   }
+  .lb-delete {
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 0.85rem;
+    padding: 2px 4px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    line-height: 1;
+    transition: color 0.15s, background 0.15s;
+    display: none; /* hidden by default, shown when unlocked */
+  }
+  .lb-delete:hover { color: var(--red); background: rgba(232,69,69,0.1); }
+  body.admin-unlocked .lb-delete { display: inline-flex; align-items: center; }
 </style>
 </head>
 <body>
@@ -1278,6 +1301,7 @@ function applyUnlock() {
   document.getElementById('lockHint').textContent   = '🔓 Bracket editing enabled';
   document.getElementById('resetBtn').disabled      = false;
   document.getElementById('reshuffleBtn').disabled  = false;
+  document.body.classList.add('admin-unlocked');
   document.getElementById('bracket').classList.remove('bracket-locked');
 
   // Auto-lock after 30 min
@@ -1296,6 +1320,7 @@ function lock() {
   document.getElementById('lockHint').textContent   = '🔒 Bracket is locked — view only';
   document.getElementById('resetBtn').disabled      = true;
   document.getElementById('reshuffleBtn').disabled  = true;
+  document.body.classList.remove('admin-unlocked');
   document.getElementById('bracket').classList.add('bracket-locked');
 }
 
@@ -2232,24 +2257,49 @@ function updateLeaderboard(preds) {
     return;
   }
   const scored = preds.map(p => ({
-    name: p.name,
-    type: p.picks?.type === 'full' ? 'Full' : 'Champ',
-    score: scorePrediction(p),
+    name:        p.name,
+    type:        p.picks?.type === 'full' ? 'Full' : 'Champ',
+    score:       scorePrediction(p),
     submittedAt: p.submittedAt || 0,
+    docId:       p.docId || p.id,   // keep doc ID for deletion
   })).sort((a,b) => b.score - a.score || a.submittedAt - b.submittedAt);
 
   lb.innerHTML = '';
+  const medals = ['🥇','🥈','🥉'];
   scored.forEach((entry, i) => {
     const row = document.createElement('div');
     row.className = 'lb-row' + (i === 0 && entry.score > 0 ? ' lb-top' : '');
-    const medals = ['🥇','🥈','🥉'];
+
+    // Main content
     row.innerHTML = `
       <span class="lb-rank">${i < 3 ? medals[i] : i+1}</span>
       <span class="lb-name">${entry.name}</span>
       <span class="lb-type">${entry.type}</span>
       <span class="lb-score">${entry.score}pt${entry.score !== 1 ? 's' : ''}</span>`;
+
+    // Delete button (only visible when admin is unlocked)
+    const delBtn = document.createElement('button');
+    delBtn.className = 'lb-delete';
+    delBtn.title = `Delete ${entry.name}'s pick`;
+    delBtn.innerHTML = '🗑';
+    delBtn.addEventListener('click', () => deletePrediction(entry.docId, entry.name));
+    row.appendChild(delBtn);
+
     lb.appendChild(row);
   });
+}
+
+async function deletePrediction(docId, name) {
+  if (!isUnlocked) return;
+  if (!confirm(`Delete ${name}'s pick? This cannot be undone.`)) return;
+  if (!docId) {
+    // Try to find by name if docId is missing (old-format entries)
+    const found = allPreds.find(p => p.name?.trim().toLowerCase() === name.toLowerCase());
+    docId = found?.docId || found?.id;
+  }
+  if (!docId) { alert('Could not find this entry to delete.'); return; }
+  const ok = await window._fbDeletePrediction?.(docId);
+  if (!ok) alert('Error deleting entry. Try again.');
 }
 
 /* ─── INIT ──────────────────────────────────────────────────── */
