@@ -2345,7 +2345,11 @@ function renderRRRound() {
 
       if (isBye || !team) {
         btn.disabled = true;
-        btn.innerHTML = `<span class="rr-team-name" style="color:var(--muted);font-style:italic;">TBD</span>`;
+        if (isBye) {
+          btn.innerHTML = `<div class="slot-tag" style="font-size:0.65rem;letter-spacing:1px;padding:1px 6px;margin-right:6px;">Bye</div><span class="rr-team-name" style="color:var(--bye-text);font-style:italic;font-size:0.85rem;">Auto-Advance ✓</span>`;
+        } else {
+          btn.innerHTML = `<span class="rr-team-name" style="color:var(--muted);font-style:italic;">TBD</span>`;
+        }
       } else {
         const isSelected = fullPicks[match.id] === team.id;
         if (isSelected) btn.classList.add('rr-selected');
