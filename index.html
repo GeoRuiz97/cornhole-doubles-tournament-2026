@@ -544,43 +544,100 @@ document.dispatchEvent(new Event('fbReady'));
     to   { transform: scale(1.18); filter: drop-shadow(0 0 6px #e84545); }
   }
 
-  /* ── Page layout with sidebar ── */
+  /* ── Page layout (no sidebar, full width) ── */
   .page-body {
-    display: flex;
-    align-items: flex-start;
+    display: block;
   }
 
-  /* ── Leaderboard + Prediction sidebar ── */
-  .sidebar {
-    width: 300px;
-    min-width: 300px;
-    flex-shrink: 0;
-    background: var(--surface);
-    border-left: 1px solid var(--border);
-    min-height: calc(100vh - 160px);
+  /* ── Floating action button ── */
+  .fab-group {
+    position: fixed;
+    bottom: 28px;
+    right: 28px;
     display: flex;
     flex-direction: column;
-    position: sticky;
-    top: 0;
-    max-height: 100vh;
-    overflow-y: auto;
+    align-items: flex-end;
+    gap: 10px;
+    z-index: 1000;
   }
-  .sidebar-section {
-    padding: 20px 18px;
-    border-bottom: 1px solid var(--border);
-  }
-  .sidebar-title {
-    font-family: 'Bebas Neue', sans-serif;
-    font-size: 1.1rem;
-    letter-spacing: 3px;
-    color: var(--accent);
-    margin-bottom: 14px;
+  .fab {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    border: none;
+    cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: center;
+    font-size: 1.3rem;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.5);
+    transition: transform 0.18s, box-shadow 0.18s;
+  }
+  .fab:hover { transform: scale(1.1); box-shadow: 0 6px 24px rgba(0,0,0,0.6); }
+  .fab-pick { background: var(--accent); color: #000; }
+  .fab-lb   { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+  .fab-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: right;
   }
 
-  /* Prediction form */
+  /* ── Sliding panel (shared) ── */
+  .slide-panel {
+    position: fixed;
+    bottom: 0; right: 0;
+    width: 380px;
+    max-width: 100vw;
+    max-height: 90vh;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-bottom: none;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
+    z-index: 1100;
+    display: flex;
+    flex-direction: column;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+    overflow: hidden;
+  }
+  .slide-panel.open { transform: translateY(0); }
+  .panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .panel-title {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.2rem;
+    letter-spacing: 3px;
+    color: var(--accent);
+  }
+  .panel-close {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: color 0.15s;
+  }
+  .panel-close:hover { color: var(--text); }
+  .panel-body {
+    padding: 16px 20px;
+    overflow-y: auto;
+    flex: 1;
+  }
+
+  /* ── Prediction form ── */
   .pred-mode-tabs {
     display: flex;
     gap: 6px;
@@ -588,14 +645,14 @@ document.dispatchEvent(new Event('fbReady'));
   }
   .pred-tab {
     flex: 1;
-    padding: 6px 4px;
+    padding: 7px 4px;
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 0.75rem;
+    font-size: 0.8rem;
     letter-spacing: 1px;
     text-transform: uppercase;
     text-align: center;
     border: 1px solid var(--border);
-    border-radius: 4px;
+    border-radius: 5px;
     cursor: pointer;
     color: var(--muted);
     background: transparent;
@@ -613,9 +670,9 @@ document.dispatchEvent(new Event('fbReady'));
     border-radius: 5px;
     color: var(--text);
     font-family: 'Barlow', sans-serif;
-    font-size: 0.88rem;
-    padding: 8px 10px;
-    margin-bottom: 10px;
+    font-size: 0.9rem;
+    padding: 9px 12px;
+    margin-bottom: 12px;
     outline: none;
     transition: border-color 0.15s;
   }
@@ -627,118 +684,186 @@ document.dispatchEvent(new Event('fbReady'));
     border-radius: 5px;
     color: var(--text);
     font-family: 'Barlow', sans-serif;
-    font-size: 0.85rem;
-    padding: 8px 10px;
-    margin-bottom: 10px;
+    font-size: 0.88rem;
+    padding: 9px 12px;
+    margin-bottom: 12px;
     outline: none;
     cursor: pointer;
   }
-  .pred-select:focus { border-color: var(--accent); }
   .pred-btn {
     width: 100%;
     background: var(--accent);
     border: none;
-    border-radius: 5px;
+    border-radius: 6px;
     color: #000;
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 1rem;
+    font-size: 1.05rem;
     letter-spacing: 2px;
-    padding: 9px;
+    padding: 10px;
     cursor: pointer;
     transition: opacity 0.15s;
-    margin-top: 2px;
+    margin-top: 4px;
   }
   .pred-btn:hover { opacity: 0.85; }
   .pred-msg {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 0.78rem;
+    font-size: 0.8rem;
     text-align: center;
-    margin-top: 8px;
+    margin-top: 10px;
     min-height: 18px;
     letter-spacing: 0.5px;
   }
   .pred-msg.success { color: var(--green); }
   .pred-msg.error   { color: var(--red); }
 
-  /* Full bracket prediction mini-bracket */
-  .mini-picks {
+  /* ── Round-by-round picker ── */
+  .rr-progress {
     display: flex;
-    flex-direction: column;
     gap: 4px;
-    margin-bottom: 10px;
-    max-height: 260px;
-    overflow-y: auto;
+    margin-bottom: 14px;
+    align-items: center;
   }
-  .mini-round-label {
+  .rr-step {
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--border);
+    transition: background 0.2s;
+  }
+  .rr-step.done    { background: var(--green); }
+  .rr-step.current { background: var(--accent); }
+
+  .rr-round-label {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 0.72rem;
-    letter-spacing: 2px;
-    color: var(--muted);
-    margin-top: 6px;
-    margin-bottom: 2px;
+    font-size: 1rem;
+    letter-spacing: 3px;
+    color: var(--accent);
+    margin-bottom: 10px;
   }
-  .mini-match {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-  }
-  .mini-slot {
-    padding: 5px 8px;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 4px;
+  .rr-round-sub {
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 0.78rem;
     color: var(--muted);
-    cursor: pointer;
-    transition: all 0.12s;
-    user-select: none;
+    letter-spacing: 1px;
+    margin-bottom: 12px;
+  }
+  .rr-matches {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .rr-match {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .rr-match-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.62rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--muted);
+    padding: 5px 10px 3px;
+    border-bottom: 1px solid var(--border);
+  }
+  .rr-team-btn {
+    width: 100%;
     display: flex;
     align-items: center;
-    gap: 6px;
-  }
-  .mini-slot:hover:not(.mini-bye):not(.mini-tbd) {
-    border-color: var(--accent);
+    gap: 10px;
+    padding: 10px 12px;
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--border);
     color: var(--text);
+    cursor: pointer;
+    transition: background 0.12s;
+    text-align: left;
   }
-  .mini-slot.mini-selected {
-    background: rgba(245,166,35,0.12);
-    border-color: var(--accent);
-    color: var(--accent);
+  .rr-team-btn:last-child { border-bottom: none; }
+  .rr-team-btn:hover:not(:disabled) { background: rgba(245,166,35,0.07); }
+  .rr-team-btn.rr-selected {
+    background: rgba(245,166,35,0.13);
+    border-left: 3px solid var(--accent);
+  }
+  .rr-team-btn:disabled { opacity: 0.4; cursor: default; }
+  .rr-team-label {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.65rem;
+    color: var(--muted);
+    letter-spacing: 1px;
+    display: block;
+    line-height: 1;
+  }
+  .rr-team-name {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.92rem;
     font-weight: 600;
+    color: var(--text);
+    display: block;
+    line-height: 1.2;
   }
-  .mini-slot.mini-bye  { opacity: 0.5; cursor: default; }
-  .mini-slot.mini-tbd  { opacity: 0.4; cursor: default; font-style: italic; }
+  .rr-team-btn.rr-selected .rr-team-name { color: var(--accent); }
+  .rr-check { margin-left: auto; color: var(--accent); font-size: 1rem; }
+  .rr-nav {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+  }
+  .rr-nav-btn {
+    flex: 1;
+    padding: 8px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.82rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .rr-nav-btn.prev {
+    background: transparent;
+    border: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .rr-nav-btn.prev:hover { border-color: var(--text); color: var(--text); }
+  .rr-nav-btn.next {
+    background: var(--accent);
+    border: 1px solid var(--accent);
+    color: #000;
+  }
+  .rr-nav-btn.next:hover { opacity: 0.85; }
 
-  /* Leaderboard */
+  /* ── Leaderboard ── */
   .leaderboard-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 7px;
   }
   .lb-row {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px;
+    padding: 9px 12px;
     background: var(--card);
     border: 1px solid var(--border);
     border-radius: 6px;
-    transition: border-color 0.15s;
   }
-  .lb-row.lb-top { border-color: var(--accent); background: rgba(245,166,35,0.06); }
+  .lb-row.lb-top { border-color: var(--accent); background: rgba(245,166,35,0.07); }
   .lb-rank {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 1rem;
+    font-size: 1.05rem;
     color: var(--muted);
-    width: 20px;
+    width: 22px;
     text-align: center;
     flex-shrink: 0;
   }
   .lb-row.lb-top .lb-rank { color: var(--accent); }
   .lb-name {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 0.9rem;
+    font-size: 0.92rem;
     font-weight: 600;
     color: var(--text);
     flex: 1;
@@ -748,7 +873,7 @@ document.dispatchEvent(new Event('fbReady'));
   }
   .lb-score {
     font-family: 'Bebas Neue', sans-serif;
-    font-size: 1rem;
+    font-size: 1.05rem;
     color: var(--green);
     flex-shrink: 0;
   }
@@ -762,10 +887,10 @@ document.dispatchEvent(new Event('fbReady'));
   }
   .lb-empty {
     font-family: 'Barlow Condensed', sans-serif;
-    font-size: 0.82rem;
+    font-size: 0.85rem;
     color: var(--muted);
     text-align: center;
-    padding: 16px 0;
+    padding: 20px 0;
     font-style: italic;
   }
 </style>
@@ -829,37 +954,66 @@ document.dispatchEvent(new Event('fbReady'));
 </div>
 
 <div class="page-body">
-  <div class="bracket-wrapper" style="flex:1;min-width:0;">
+  <div class="bracket-wrapper">
     <div class="bracket" id="bracket"></div>
   </div>
-  <div class="sidebar" id="sidebar">
-    <!-- Prediction Entry -->
-    <div class="sidebar-section">
-      <div class="sidebar-title">🎯 Make Your Pick</div>
-      <input class="pred-input" id="predName" type="text" placeholder="Your name" maxlength="40" />
-      <div class="pred-mode-tabs">
-        <button class="pred-tab active" id="tabChamp" onclick="switchPredTab('champ')">Champion Only</button>
-        <button class="pred-tab" id="tabFull" onclick="switchPredTab('full')">Full Bracket</button>
-      </div>
-      <!-- Champion-only mode -->
-      <div id="predChampMode">
-        <select class="pred-select" id="predChampPick">
-          <option value="">-- Pick the winner --</option>
-        </select>
-      </div>
-      <!-- Full bracket mode -->
-      <div id="predFullMode" style="display:none;">
-        <div class="mini-picks" id="miniPicks"></div>
-      </div>
-      <button class="pred-btn" onclick="submitPrediction()">Submit Pick</button>
-      <div class="pred-msg" id="predMsg"></div>
+</div>
+
+<!-- ── Floating Action Buttons ── -->
+<div class="fab-group">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+    <span class="fab-label">Leaderboard</span>
+    <button class="fab fab-lb" onclick="togglePanel('lbPanel')" title="Leaderboard">🏅</button>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+    <span class="fab-label">Make a Pick</span>
+    <button class="fab fab-pick" onclick="togglePanel('pickPanel')" title="Make your pick">🎯</button>
+  </div>
+</div>
+
+<!-- ── Pick Panel ── -->
+<div class="slide-panel" id="pickPanel">
+  <div class="panel-header">
+    <span class="panel-title">🎯 Make Your Pick</span>
+    <button class="panel-close" onclick="closePanel('pickPanel')">✕</button>
+  </div>
+  <div class="panel-body">
+    <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" />
+    <div class="pred-mode-tabs">
+      <button class="pred-tab active" id="tabChamp" onclick="switchPredTab('champ')">🏆 Champion Only</button>
+      <button class="pred-tab" id="tabFull" onclick="switchPredTab('full')">📋 Full Bracket</button>
     </div>
-    <!-- Leaderboard -->
-    <div class="sidebar-section" style="flex:1;">
-      <div class="sidebar-title">🏅 Leaderboard</div>
-      <div class="leaderboard-list" id="leaderboard">
-        <div class="lb-empty">No picks submitted yet</div>
+    <!-- Champion-only mode -->
+    <div id="predChampMode">
+      <select class="pred-select" id="predChampPick">
+        <option value="">-- Pick the winner --</option>
+      </select>
+    </div>
+    <!-- Full bracket round-by-round mode -->
+    <div id="predFullMode" style="display:none;">
+      <div class="rr-progress" id="rrProgress"></div>
+      <div class="rr-round-label" id="rrRoundLabel"></div>
+      <div class="rr-round-sub" id="rrRoundSub"></div>
+      <div class="rr-matches" id="rrMatches"></div>
+      <div class="rr-nav">
+        <button class="rr-nav-btn prev" id="rrPrevBtn" onclick="rrNav(-1)">← Back</button>
+        <button class="rr-nav-btn next" id="rrNextBtn" onclick="rrNav(1)">Next →</button>
       </div>
+    </div>
+    <button class="pred-btn" id="predSubmitBtn" onclick="submitPrediction()" style="margin-top:14px;">Submit Pick</button>
+    <div class="pred-msg" id="predMsg"></div>
+  </div>
+</div>
+
+<!-- ── Leaderboard Panel ── -->
+<div class="slide-panel" id="lbPanel">
+  <div class="panel-header">
+    <span class="panel-title">🏅 Leaderboard</span>
+    <button class="panel-close" onclick="closePanel('lbPanel')">✕</button>
+  </div>
+  <div class="panel-body">
+    <div class="leaderboard-list" id="leaderboard">
+      <div class="lb-empty">No picks submitted yet</div>
     </div>
   </div>
 </div>
@@ -1673,10 +1827,31 @@ function drawConnectors() {
 
 window.addEventListener('resize', () => { drawConnectors(); });
 
+/* ─── PANEL CONTROLS ─────────────────────────────────────────── */
+function togglePanel(id) {
+  const panel = document.getElementById(id);
+  const isOpen = panel.classList.contains('open');
+  // Close all panels first
+  document.querySelectorAll('.slide-panel').forEach(p => p.classList.remove('open'));
+  if (!isOpen) panel.classList.add('open');
+}
+function closePanel(id) {
+  document.getElementById(id).classList.remove('open');
+}
+// Close panel when clicking outside
+document.addEventListener('click', e => {
+  if (!e.target.closest('.slide-panel') && !e.target.closest('.fab')) {
+    document.querySelectorAll('.slide-panel').forEach(p => p.classList.remove('open'));
+  }
+});
+
 /* ─── PREDICTIONS & LEADERBOARD ─────────────────────────────── */
-let predMode   = 'champ'; // 'champ' or 'full'
-let fullPicks  = {};      // matchId → teamId for full bracket mode
-let allPreds   = [];      // live from Firestore
+let predMode  = 'champ';
+let fullPicks = {};       // matchId → teamId
+let rrRound   = 0;        // current round index in round-by-round picker
+let allPreds  = [];
+
+const RNAMES = ['Round 1','Round 2','Quarterfinals','Semifinals','Championship'];
 
 function switchPredTab(mode) {
   predMode = mode;
@@ -1684,11 +1859,12 @@ function switchPredTab(mode) {
   document.getElementById('tabFull').classList.toggle('active', mode === 'full');
   document.getElementById('predChampMode').style.display = mode === 'champ' ? '' : 'none';
   document.getElementById('predFullMode').style.display  = mode === 'full'  ? '' : 'none';
-  if (mode === 'full') renderMiniPicks();
+  if (mode === 'full') { rrRound = 0; renderRRRound(); }
 }
 
 function populateChampSelect() {
   const sel = document.getElementById('predChampPick');
+  if (!sel) return;
   const cur = sel.value;
   sel.innerHTML = '<option value="">-- Pick the winner --</option>';
   TEAMS.forEach(t => {
@@ -1700,52 +1876,116 @@ function populateChampSelect() {
   if (cur) sel.value = cur;
 }
 
-function renderMiniPicks() {
+/* ── Round-by-round picker ── */
+function renderRRRound() {
   if (!ST) return;
-  const container = document.getElementById('miniPicks');
-  container.innerHTML = '';
-  const RNAMES = ['Round 1','Round 2','Quarterfinals','Semifinals','Championship'];
+  const rounds = ST.rounds;
+  const totalRounds = rounds.length;
 
-  ST.rounds.forEach((round, ri) => {
-    const rlabel = document.createElement('div');
-    rlabel.className = 'mini-round-label';
-    rlabel.textContent = RNAMES[ri] || `Round ${ri+1}`;
-    container.appendChild(rlabel);
-
-    round.forEach(match => {
-      const wrap = document.createElement('div');
-      wrap.className = 'mini-match';
-
-      ['top','bottom'].forEach(slot => {
-        const raw = slot === 'top' ? match.top : match.bottom;
-        const isBye   = raw === 'BYE';
-        const isEmpty = raw === null || raw === undefined;
-        const team    = (!isBye && !isEmpty) ? raw : null;
-
-        const div = document.createElement('div');
-        div.className = 'mini-slot' +
-          (isBye   ? ' mini-bye' : '') +
-          (isEmpty ? ' mini-tbd' : '') +
-          (fullPicks[match.id] === team?.id ? ' mini-selected' : '');
-
-        if (isBye)        div.textContent = 'BYE';
-        else if (isEmpty) div.textContent = 'TBD';
-        else {
-          div.innerHTML = `<span style="opacity:0.6;font-size:0.68rem;">${team.label}</span> ${team.p1} & ${team.p2}`;
-          div.addEventListener('click', () => {
-            fullPicks[match.id] = team.id;
-            renderMiniPicks();
-          });
-        }
-        wrap.appendChild(div);
-      });
-      container.appendChild(wrap);
+  // Progress bar
+  const prog = document.getElementById('rrProgress');
+  if (prog) {
+    prog.innerHTML = '';
+    rounds.forEach((_, i) => {
+      const s = document.createElement('div');
+      s.className = 'rr-step' + (i < rrRound ? ' done' : i === rrRound ? ' current' : '');
+      prog.appendChild(s);
     });
+  }
+
+  const round  = rounds[rrRound];
+  const lbl    = document.getElementById('rrRoundLabel');
+  const sub    = document.getElementById('rrRoundSub');
+  const matchC = document.getElementById('rrMatches');
+  if (!lbl || !sub || !matchC) return;
+
+  lbl.textContent = RNAMES[rrRound] || `Round ${rrRound + 1}`;
+
+  // Count how many picks are needed vs made in this round
+  const pickable = round.filter(m => {
+    const top = m.top; const bot = m.bottom;
+    return top && top !== 'BYE' && bot && bot !== 'BYE';
   });
+  const picked = pickable.filter(m => fullPicks[m.id]);
+  sub.textContent = `${picked.length} of ${pickable.length} picked`;
+
+  matchC.innerHTML = '';
+  round.forEach((match, mi) => {
+    const topRaw = match.top;
+    const botRaw = match.bottom;
+    const topBye = topRaw === 'BYE' || topRaw === null || topRaw === undefined;
+    const botBye = botRaw === 'BYE' || botRaw === null || botRaw === undefined;
+
+    // If both are unknown/bye, skip
+    if (topBye && botBye) return;
+
+    const card = document.createElement('div');
+    card.className = 'rr-match';
+
+    const mlabel = document.createElement('div');
+    mlabel.className = 'rr-match-label';
+    mlabel.textContent = `Game ${mi + 1}`;
+    card.appendChild(mlabel);
+
+    [[topRaw, topBye], [botRaw, botBye]].forEach(([raw, isBye]) => {
+      const btn = document.createElement('button');
+      btn.className = 'rr-team-btn';
+
+      if (isBye || raw === null || raw === undefined) {
+        btn.disabled = true;
+        btn.innerHTML = `<span class="rr-team-name" style="color:var(--muted);font-style:italic;">TBD / BYE</span>`;
+      } else {
+        const isSelected = fullPicks[match.id] === raw.id;
+        if (isSelected) btn.classList.add('rr-selected');
+        btn.innerHTML = `
+          <div>
+            <span class="rr-team-label">${raw.label}</span>
+            <span class="rr-team-name">${raw.p1} &amp; ${raw.p2}</span>
+          </div>
+          ${isSelected ? '<span class="rr-check">✓</span>' : ''}`;
+        btn.addEventListener('click', () => {
+          // If it's a bye match, auto-advance the real team
+          if (topBye || botBye) {
+            fullPicks[match.id] = raw.id;
+          } else {
+            fullPicks[match.id] = raw.id;
+          }
+          renderRRRound();
+        });
+      }
+      card.appendChild(btn);
+    });
+
+    matchC.appendChild(card);
+  });
+
+  // Nav buttons
+  const prevBtn = document.getElementById('rrPrevBtn');
+  const nextBtn = document.getElementById('rrNextBtn');
+  if (prevBtn) prevBtn.style.display = rrRound === 0 ? 'none' : '';
+  if (nextBtn) {
+    if (rrRound === totalRounds - 1) {
+      nextBtn.textContent = '✓ Done';
+      nextBtn.onclick = () => {
+        document.getElementById('predFullMode').style.display = 'none';
+        document.getElementById('predSubmitBtn').scrollIntoView({ behavior: 'smooth' });
+      };
+    } else {
+      nextBtn.textContent = 'Next →';
+      nextBtn.onclick = () => rrNav(1);
+    }
+  }
+}
+
+function rrNav(dir) {
+  if (!ST) return;
+  rrRound = Math.max(0, Math.min(ST.rounds.length - 1, rrRound + dir));
+  document.getElementById('predFullMode').style.display = '';
+  renderRRRound();
 }
 
 async function submitPrediction() {
-  const name = document.getElementById('predName').value.trim();
+  const name  = document.getElementById('predName').value.trim();
   const msgEl = document.getElementById('predMsg');
   msgEl.className = 'pred-msg';
   msgEl.textContent = '';
@@ -1759,20 +1999,21 @@ async function submitPrediction() {
     picks = { type: 'champ', champId };
   } else {
     if (Object.keys(fullPicks).length === 0) {
-      msgEl.className = 'pred-msg error'; msgEl.textContent = 'Please make at least one pick.'; return;
+      msgEl.className = 'pred-msg error'; msgEl.textContent = 'Make at least one pick.'; return;
     }
-    picks = { type: 'full', matchPicks: fullPicks };
+    picks = { type: 'full', matchPicks: { ...fullPicks } };
   }
 
   msgEl.textContent = 'Submitting...';
   const ok = await window._fbSavePrediction(name, picks);
   if (ok) {
     msgEl.className = 'pred-msg success';
-    msgEl.textContent = '✓ Pick submitted!';
+    msgEl.textContent = '✓ Pick submitted! Good luck!';
     document.getElementById('predName').value = '';
-    fullPicks = {};
     document.getElementById('predChampPick').value = '';
-    if (predMode === 'full') renderMiniPicks();
+    fullPicks = {};
+    rrRound = 0;
+    if (predMode === 'full') renderRRRound();
   } else {
     msgEl.className = 'pred-msg error';
     msgEl.textContent = 'Error submitting. Try again.';
@@ -1781,18 +2022,13 @@ async function submitPrediction() {
 
 function scorePrediction(pred) {
   if (!ST) return 0;
-  let score = 0;
   const picks = pred.picks;
   if (!picks) return 0;
-
+  let score = 0;
   if (picks.type === 'champ') {
-    // Check if their champion pick has won the final
     const finalMatch = ST.rounds[ST.rounds.length - 1][0];
-    if (finalMatch?.winner && finalMatch.winner !== 'BYE' && finalMatch.winner.id === picks.champId) {
-      score = 1;
-    }
+    if (finalMatch?.winner && finalMatch.winner !== 'BYE' && finalMatch.winner.id === picks.champId) score = 1;
   } else if (picks.type === 'full') {
-    // 1 point per correct match winner
     ST.rounds.flat().forEach(match => {
       if (match.winner && match.winner !== 'BYE') {
         if (picks.matchPicks?.[match.id] === match.winner.id) score++;
@@ -1806,13 +2042,10 @@ function updateLeaderboard(preds) {
   allPreds = preds;
   const lb = document.getElementById('leaderboard');
   if (!lb) return;
-
   if (!preds || preds.length === 0) {
-    lb.innerHTML = '<div class="lb-empty">No picks submitted yet</div>';
+    lb.innerHTML = '<div class="lb-empty">No picks yet — be the first!</div>';
     return;
   }
-
-  // Score and sort
   const scored = preds.map(p => ({
     name: p.name,
     type: p.picks?.type === 'full' ? 'Full' : 'Champ',
@@ -1824,12 +2057,9 @@ function updateLeaderboard(preds) {
   scored.forEach((entry, i) => {
     const row = document.createElement('div');
     row.className = 'lb-row' + (i === 0 && entry.score > 0 ? ' lb-top' : '');
-
     const medals = ['🥇','🥈','🥉'];
-    const rankStr = i < 3 ? medals[i] : `${i+1}`;
-
     row.innerHTML = `
-      <span class="lb-rank">${rankStr}</span>
+      <span class="lb-rank">${i < 3 ? medals[i] : i+1}</span>
       <span class="lb-name">${entry.name}</span>
       <span class="lb-type">${entry.type}</span>
       <span class="lb-score">${entry.score}pt${entry.score !== 1 ? 's' : ''}</span>`;
