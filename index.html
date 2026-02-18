@@ -209,17 +209,21 @@ document.dispatchEvent(new Event('fbReady'));
   .btn-export:hover { background: var(--green); color: #fff; }
   body.admin-unlocked .btn-export { display: inline-block; }
   @media print {
-    body * { visibility: hidden !important; }
-    #exportPrintArea, #exportPrintArea * { visibility: visible !important; }
+    html, body {
+      height: auto !important;
+      overflow: visible !important;
+      background: white !important;
+    }
+    body > *:not(#exportPrintArea) { display: none !important; }
     #exportPrintArea {
-      position: fixed !important;
-      inset: 0 !important;
+      display: block !important;
+      position: static !important;
+      width: 100% !important;
       background: white !important;
       color: black !important;
-      padding: 32px !important;
+      padding: 24px !important;
       font-family: Arial, sans-serif !important;
-      z-index: 99999 !important;
-      overflow: auto !important;
+      z-index: auto !important;
     }
   }
   .btn-reshuffle {
@@ -2855,11 +2859,14 @@ function exportPredictionsPDF() {
   });
 
   area.innerHTML = html;
-  area.style.display = 'block';
+  area.style.cssText = 'display:block;position:static;width:100%;background:white;color:black;padding:24px;font-family:Arial,sans-serif;box-sizing:border-box;';
   setTimeout(() => {
     window.print();
-    area.style.display = 'none';
-  }, 200);
+    setTimeout(() => {
+      area.style.display = 'none';
+      area.innerHTML = '';
+    }, 500);
+  }, 300);
 }
 
 /* ─── CHAMPION ANNOUNCEMENT OVERLAY ─────────────────────────── */
