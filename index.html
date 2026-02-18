@@ -127,6 +127,7 @@ document.dispatchEvent(new Event('fbReady'));
     margin-bottom: 10px;
     filter: drop-shadow(0 0 16px rgba(245,166,35,0.7));
   }
+
   header h1 {
     font-family: 'Bebas Neue', sans-serif;
     font-size: clamp(1.8rem, 4.5vw, 3.5rem);
@@ -2446,7 +2447,7 @@ function updateLeaderboard(preds) {
     // Breakdown: show points earned per round
     const parts = entry.byRound
       .filter(r => r.earned > 0)
-      .map(r => `${r.round.split(' ')[0]}: ${r.earned}`)
+      .map(r => `${r.round}: ${r.earned}pt`)
       .join(' · ');
     const breakdown = parts
       ? `<span class="lb-breakdown">${parts}</span>`
