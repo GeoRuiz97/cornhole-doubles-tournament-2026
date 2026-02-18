@@ -551,20 +551,23 @@ document.dispatchEvent(new Event('fbReady'));
 
   /* ── Champion Announcement Overlay ── */
   #champOverlay {
-    display: none;
     position: fixed;
     inset: 0;
-    z-index: 5000;
+    z-index: 10001;
+    display: flex;
     align-items: center;
     justify-content: center;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     background: rgba(7, 9, 14, 0.75);
     padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
   }
   #champOverlay.visible {
-    display: flex;
-    animation: overlayFadeIn 0.5s ease forwards;
+    opacity: 1;
+    pointer-events: all;
   }
   @keyframes overlayFadeIn {
     from { opacity: 0; }
@@ -719,6 +722,7 @@ document.dispatchEvent(new Event('fbReady'));
     cursor: pointer;
     display: flex; align-items: center; justify-content: center;
     transition: all 0.15s;
+    z-index: 10002;
   }
   .col-dismiss:hover { background: rgba(255,255,255,0.12); color: var(--text); }
   .col-called-it {
@@ -2747,6 +2751,11 @@ function showChampOverlay(champion) {
 function dismissChampOverlay() {
   document.getElementById('champOverlay').classList.remove('visible');
 }
+
+// Also dismiss when clicking the dark backdrop (outside the panel)
+document.getElementById('champOverlay').addEventListener('click', function(e) {
+  if (e.target === this) dismissChampOverlay();
+});
 
 /* ─── INIT ──────────────────────────────────────────────────── */
 // Show a loading state while Firebase connects
