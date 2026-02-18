@@ -1064,37 +1064,29 @@ document.dispatchEvent(new Event('fbReady'));
 <!-- ── Pick Panel ── -->
 <div class="slide-panel" id="pickPanel">
   <div class="panel-header">
-    <span class="panel-title">🎯 Make Your Pick</span>
+    <span class="panel-title">🎯 Pick Your Bracket</span>
     <button class="panel-close" onclick="closePanel('pickPanel')">✕</button>
   </div>
   <div class="panel-body">
-    <div style="display:flex;gap:8px;margin-bottom:0;">
+    <!-- Name + lookup -->
+    <div style="display:flex;gap:8px;margin-bottom:10px;">
       <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" style="margin-bottom:0;flex:1;" />
       <button class="pred-btn" style="width:auto;padding:9px 14px;margin-top:0;flex-shrink:0;font-size:0.82rem;" onclick="lookupExistingPick()">Look Up</button>
     </div>
-    <div style="height:10px;"></div>
-    <div class="pred-mode-tabs">
-      <button class="pred-tab active" id="tabChamp" onclick="switchPredTab('champ')">🏆 Champion Only</button>
-      <button class="pred-tab" id="tabFull" onclick="switchPredTab('full')">📋 Full Bracket</button>
+    <!-- Scoring key -->
+    <div id="scoringKey" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;letter-spacing:1px;color:var(--muted);width:100%;text-transform:uppercase;">Points per correct pick:</span>
     </div>
-    <!-- Champion-only mode -->
-    <div id="predChampMode">
-      <select class="pred-select" id="predChampPick">
-        <option value="">-- Pick the winner --</option>
-      </select>
+    <!-- Round-by-round picker (always shown) -->
+    <div class="rr-progress" id="rrProgress"></div>
+    <div class="rr-round-label" id="rrRoundLabel"></div>
+    <div class="rr-round-sub"  id="rrRoundSub"></div>
+    <div class="rr-matches"    id="rrMatches"></div>
+    <div class="rr-nav">
+      <button class="rr-nav-btn prev" id="rrPrevBtn" onclick="rrNav(-1)">← Back</button>
+      <button class="rr-nav-btn next" id="rrNextBtn" onclick="rrNav(1)">Next →</button>
     </div>
-    <!-- Full bracket round-by-round mode -->
-    <div id="predFullMode" style="display:none;">
-      <div class="rr-progress" id="rrProgress"></div>
-      <div class="rr-round-label" id="rrRoundLabel"></div>
-      <div class="rr-round-sub" id="rrRoundSub"></div>
-      <div class="rr-matches" id="rrMatches"></div>
-      <div class="rr-nav">
-        <button class="rr-nav-btn prev" id="rrPrevBtn" onclick="rrNav(-1)">← Back</button>
-        <button class="rr-nav-btn next" id="rrNextBtn" onclick="rrNav(1)">Next →</button>
-      </div>
-    </div>
-    <button class="pred-btn" id="predSubmitBtn" onclick="submitPrediction()" style="margin-top:14px;">Submit Pick</button>
+    <button class="pred-btn" id="predSubmitBtn" onclick="submitPrediction()" style="margin-top:14px;">Submit Bracket</button>
     <div class="pred-msg" id="predMsg"></div>
   </div>
 </div>
@@ -1937,37 +1929,40 @@ function closePanel(id) {
 // NOTE: No click-outside listener — panels only close via the X button
 
 /* ─── PREDICTIONS & LEADERBOARD ─────────────────────────────── */
-let predMode       = 'champ';
-let fullPicks      = {};       // matchId → teamId
-let rrRound        = 0;        // current round index in round-by-round picker
-let allPreds       = [];
-let myDocId        = null;     // Firestore doc ID for current user's prediction
-let isEditMode     = false;    // true when editing an existing submission
+let fullPicks  = {};   // matchId → teamId
+let rrRound    = 0;    // current round index in round-by-round picker
+let allPreds   = [];
+let myDocId    = null; // Firestore doc ID for current user's prediction
+let isEditMode = false;
 
-const RNAMES = ['Round 1','Round 2','Quarterfinals','Semifinals','Championship'];
+const RNAMES      = ['Round 1','Round 2','Quarterfinals','Semifinals','Championship'];
+const ROUND_PTS   = [1, 2, 4, 8, 16]; // points per correct pick per round
 
-function switchPredTab(mode) {
-  predMode = mode;
-  document.getElementById('tabChamp').classList.toggle('active', mode === 'champ');
-  document.getElementById('tabFull').classList.toggle('active', mode === 'full');
-  document.getElementById('predChampMode').style.display = mode === 'champ' ? '' : 'none';
-  document.getElementById('predFullMode').style.display  = mode === 'full'  ? '' : 'none';
-  if (mode === 'full') { rrRound = 0; renderRRRound(); }
-}
-
-function populateChampSelect() {
-  const sel = document.getElementById('predChampPick');
-  if (!sel) return;
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">-- Pick the winner --</option>';
-  TEAMS.forEach(t => {
-    const opt = document.createElement('option');
-    opt.value = t.id;
-    opt.textContent = `${t.label}: ${t.p1} & ${t.p2}`;
-    sel.appendChild(opt);
+function populateScoringKey() {
+  const el = document.getElementById('scoringKey');
+  if (!el) return;
+  // Clear badge children (keep the label span)
+  [...el.querySelectorAll('.score-badge')].forEach(b => b.remove());
+  RNAMES.forEach((name, i) => {
+    const badge = document.createElement('span');
+    badge.className = 'score-badge';
+    badge.style.cssText = `
+      background:rgba(245,166,35,${0.06 + i * 0.04});
+      border:1px solid rgba(245,166,35,${0.2 + i * 0.1});
+      border-radius:4px;
+      padding:3px 7px;
+      font-family:'Barlow Condensed',sans-serif;
+      font-size:0.72rem;
+      color:var(--accent);
+      letter-spacing:0.5px;
+      white-space:nowrap;
+    `;
+    badge.textContent = `${name.split(' ')[0]}: ${ROUND_PTS[i]}pt`;
+    el.appendChild(badge);
   });
-  if (cur) sel.value = cur;
 }
+
+function populateChampSelect() { /* no-op — champion-only mode removed */ }
 
 /* ── Round-by-round picker ── */
 function renderRRRound() {
@@ -1992,15 +1987,26 @@ function renderRRRound() {
   const matchC = document.getElementById('rrMatches');
   if (!lbl || !sub || !matchC) return;
 
-  lbl.textContent = RNAMES[rrRound] || `Round ${rrRound + 1}`;
+  const pts = ROUND_PTS[rrRound] || 1;
+  lbl.innerHTML = `${RNAMES[rrRound] || `Round ${rrRound+1}`} <span style="font-size:0.7rem;letter-spacing:1px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;">· ${pts}pt per correct pick</span>`;
 
   // Count how many picks are needed vs made in this round
+  // BYE matches auto-advance — only count real vs real
   const pickable = round.filter(m => {
     const top = m.top; const bot = m.bottom;
     return top && top !== 'BYE' && bot && bot !== 'BYE';
   });
+  // Auto-advance BYE matches silently
+  round.forEach(m => {
+    const topBye = m.top === 'BYE' || m.top === null || m.top === undefined;
+    const botBye = m.bottom === 'BYE' || m.bottom === null || m.bottom === undefined;
+    if (topBye && !botBye && m.bottom?.id) fullPicks[m.id] = m.bottom.id;
+    if (botBye && !topBye && m.top?.id)    fullPicks[m.id] = m.top.id;
+  });
   const picked = pickable.filter(m => fullPicks[m.id]);
-  sub.textContent = `${picked.length} of ${pickable.length} picked`;
+  const allPicked = picked.length === pickable.length && pickable.length > 0;
+  sub.innerHTML = `${picked.length} of ${pickable.length} picked` +
+    (allPicked ? ' <span style="color:var(--green);">✓ Round complete!</span>' : '');
 
   matchC.innerHTML = '';
   round.forEach((match, mi) => {
@@ -2056,16 +2062,27 @@ function renderRRRound() {
   const prevBtn = document.getElementById('rrPrevBtn');
   const nextBtn = document.getElementById('rrNextBtn');
   if (prevBtn) prevBtn.style.display = rrRound === 0 ? 'none' : '';
+
   if (nextBtn) {
+    // Check if all real picks in this round are made
+    const pickableNow = round.filter(m =>
+      m.top && m.top !== 'BYE' && m.bottom && m.bottom !== 'BYE'
+    );
+    const pickedNow   = pickableNow.filter(m => fullPicks[m.id]);
+    const roundDone   = pickedNow.length === pickableNow.length && pickableNow.length > 0;
+
     if (rrRound === totalRounds - 1) {
       nextBtn.textContent = '✓ Done';
+      nextBtn.disabled    = false;
+      nextBtn.style.opacity = '1';
       nextBtn.onclick = () => {
-        document.getElementById('predFullMode').style.display = 'none';
         document.getElementById('predSubmitBtn').scrollIntoView({ behavior: 'smooth' });
       };
     } else {
-      nextBtn.textContent = 'Next →';
-      nextBtn.onclick = () => rrNav(1);
+      nextBtn.textContent   = 'Next Round →';
+      nextBtn.disabled      = !roundDone;
+      nextBtn.style.opacity = roundDone ? '1' : '0.4';
+      nextBtn.onclick       = roundDone ? () => rrNav(1) : null;
     }
   }
 }
@@ -2094,11 +2111,7 @@ async function lookupExistingPick() {
       myDocId    = existing.docId || existing.id;
       isEditMode = true;
       const picks = existing.picks;
-      if (picks?.type === 'champ') {
-        switchPredTab('champ');
-        document.getElementById('predChampPick').value = picks.champId || '';
-      } else if (picks?.type === 'full') {
-        switchPredTab('full');
+      if (picks?.matchPicks) {
         fullPicks = { ...picks.matchPicks };
         renderRRRound();
       }
@@ -2144,13 +2157,10 @@ async function loadExistingPick(name) {
   isEditMode = true;
   const picks = existing.picks;
 
-  // Restore pick type
-  if (picks.type === 'champ') {
-    switchPredTab('champ');
-    document.getElementById('predChampPick').value = picks.champId || '';
-  } else {
-    switchPredTab('full');
+  // Restore full bracket picks
+  if (picks.matchPicks) {
     fullPicks = { ...picks.matchPicks };
+    rrRound = 0;
     renderRRRound();
   }
 
@@ -2175,6 +2185,24 @@ async function submitPrediction() {
 
   if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Please enter your name.'; return; }
 
+  // Require full bracket — all non-bye matches must have a pick
+  const allMatches = ST.rounds.flat();
+  const realMatches = allMatches.filter(m =>
+    m.top && m.top !== 'BYE' && m.bottom && m.bottom !== 'BYE'
+  );
+  const missingPicks = realMatches.filter(m => !fullPicks[m.id]);
+  if (missingPicks.length > 0) {
+    // Find which round the first missing pick is in
+    const firstMissing = missingPicks[0];
+    const roundIdx = ST.rounds.findIndex(r => r.some(m => m.id === firstMissing.id));
+    msgEl.className = 'pred-msg error';
+    msgEl.textContent = `Please complete all rounds first. You have ${missingPicks.length} pick${missingPicks.length > 1 ? 's' : ''} missing (starting in ${RNAMES[roundIdx] || 'Round ' + (roundIdx+1)}).`;
+    // Jump to that round
+    rrRound = Math.max(0, roundIdx);
+    renderRRRound();
+    return;
+  }
+
   // Block duplicate submissions — must Look Up first to edit
   if (!isEditMode) {
     msgEl.textContent = 'Checking for existing pick...';
@@ -2188,40 +2216,18 @@ async function submitPrediction() {
     }
   }
 
-  let picks = {};
-  if (predMode === 'champ') {
-    const champId = document.getElementById('predChampPick').value;
-    if (!champId) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Please pick a champion.'; return; }
-
-    // If the championship match is already decided, champion pick is locked
-    const finalMatch = ST?.rounds[ST.rounds.length - 1][0];
-    if (finalMatch?.winner && finalMatch.winner !== 'BYE') {
-      msgEl.className = 'pred-msg error';
-      msgEl.textContent = 'The champion has already been decided — this pick is locked.';
-      return;
+  // Merge: preserve locked picks from existing submission
+  let finalMatchPicks = { ...fullPicks };
+  if (isEditMode && myDocId) {
+    const existing = await window._fbGetPrediction?.(name);
+    if (existing?.picks?.matchPicks) {
+      Object.entries(existing.picks.matchPicks).forEach(([mid, wid]) => {
+        if (isMatchLocked(mid)) finalMatchPicks[mid] = wid;
+      });
     }
-    picks = { type: 'champ', champId };
-  } else {
-    if (Object.keys(fullPicks).length === 0) {
-      msgEl.className = 'pred-msg error'; msgEl.textContent = 'Make at least one pick.'; return;
-    }
-
-    // Merge: keep existing locked picks, allow changes to unlocked ones
-    let finalMatchPicks = { ...fullPicks };
-    if (isEditMode && myDocId) {
-      // Re-fetch existing to preserve any locked picks that weren't in fullPicks
-      const existing = await window._fbGetPrediction(name);
-      if (existing?.picks?.matchPicks) {
-        Object.entries(existing.picks.matchPicks).forEach(([mid, wid]) => {
-          if (isMatchLocked(mid)) {
-            finalMatchPicks[mid] = wid; // always preserve locked picks
-          }
-        });
-      }
-    }
-    picks = { type: 'full', matchPicks: finalMatchPicks };
   }
 
+  const picks = { type: 'full', matchPicks: finalMatchPicks };
   const wasEditing = isEditMode;
   msgEl.textContent = 'Saving...';
   const savedId = await window._fbSavePrediction(name, picks, myDocId);
@@ -2229,54 +2235,49 @@ async function submitPrediction() {
     myDocId    = savedId;
     isEditMode = true;
     msgEl.className = 'pred-msg success';
-    msgEl.textContent = wasEditing ? '✓ Pick updated! Good luck!' : '✓ Pick submitted! Good luck!';
-    document.getElementById('predSubmitBtn').textContent = 'Update Pick';
-    if (!wasEditing) {
-      // Fresh submit — clear form except name so they can see it's locked in
-      document.getElementById('predChampPick').value = picks.champId || '';
-    }
+    msgEl.textContent = wasEditing ? '✓ Bracket updated! Good luck!' : '✓ Bracket submitted! Good luck!';
+    document.getElementById('predSubmitBtn').textContent = 'Update Bracket';
     fullPicks = {};
     rrRound = 0;
-    if (predMode === 'full') renderRRRound();
+    renderRRRound();
   } else {
     msgEl.className = 'pred-msg error';
     msgEl.textContent = 'Error saving. Try again.';
   }
 }
 
-const CHAMP_POINTS = 3; // points awarded for a correct champion pick
+// Points double each round: R1=1, R2=2, QF=4, SF=8, Championship=16
+const ROUND_PTS = [1, 2, 4, 8, 16];
 
 function scorePrediction(pred) {
-  if (!ST) return { total: 0, matchPts: 0, champPts: 0 };
+  if (!ST) return { total: 0, byRound: [], maxPossible: 0 };
   const picks = pred.picks;
-  if (!picks) return { total: 0, matchPts: 0, champPts: 0 };
+  if (!picks || !picks.matchPicks) return { total: 0, byRound: [], maxPossible: 0 };
 
-  const finalMatch = ST.rounds[ST.rounds.length - 1][0];
-  const actualChampId = (finalMatch?.winner && finalMatch.winner !== 'BYE')
-    ? finalMatch.winner.id : null;
+  let total = 0;
+  const byRound = [];
+  let maxPossible = 0;
 
-  let matchPts = 0;
-  let champPts = 0;
+  ST.rounds.forEach((round, ri) => {
+    const pts     = ROUND_PTS[ri] || Math.pow(2, ri);
+    let roundEarned = 0;
+    let roundMax    = 0;
 
-  if (picks.type === 'champ') {
-    // Champion-only: 3 pts if correct
-    if (actualChampId && picks.champId === actualChampId) champPts = CHAMP_POINTS;
-
-  } else if (picks.type === 'full') {
-    // Full bracket: 1 pt per correct match winner
-    ST.rounds.flat().forEach(match => {
+    round.forEach(match => {
+      // Skip BYE matches
+      if (!match.top || match.top === 'BYE' || !match.bottom || match.bottom === 'BYE') return;
+      roundMax += pts;
       if (match.winner && match.winner !== 'BYE') {
-        if (picks.matchPicks?.[match.id] === match.winner.id) matchPts++;
+        if (picks.matchPicks[match.id] === match.winner.id) roundEarned += pts;
       }
     });
-    // Bonus 3 pts if their champion pick (final match) was also correct
-    const finalMatchId = finalMatch?.id;
-    if (actualChampId && finalMatchId && picks.matchPicks?.[finalMatchId] === actualChampId) {
-      champPts = CHAMP_POINTS;
-    }
-  }
 
-  return { total: matchPts + champPts, matchPts, champPts };
+    total       += roundEarned;
+    maxPossible += roundMax;
+    byRound.push({ round: RNAMES[ri] || `Round ${ri+1}`, earned: roundEarned, max: roundMax, pts });
+  });
+
+  return { total, byRound, maxPossible };
 }
 
 function updateLeaderboard(preds) {
@@ -2291,10 +2292,9 @@ function updateLeaderboard(preds) {
     const s = scorePrediction(p);
     return {
       name:        p.name,
-      type:        p.picks?.type === 'full' ? 'Full' : 'Champ',
       score:       s.total,
-      matchPts:    s.matchPts,
-      champPts:    s.champPts,
+      maxPossible: s.maxPossible,
+      byRound:     s.byRound,
       submittedAt: p.submittedAt || 0,
       docId:       p.docId || p.id,
     };
@@ -2306,16 +2306,14 @@ function updateLeaderboard(preds) {
     const row = document.createElement('div');
     row.className = 'lb-row' + (i === 0 && entry.score > 0 ? ' lb-top' : '');
 
-    // Build score breakdown tooltip
-    let breakdown = '';
-    if (entry.type === 'Full') {
-      const parts = [];
-      if (entry.matchPts > 0) parts.push(`${entry.matchPts} match${entry.matchPts !== 1 ? 'es' : ''}`);
-      if (entry.champPts > 0) parts.push(`🏆 +${entry.champPts} champ bonus`);
-      breakdown = parts.length ? `<span class="lb-breakdown">${parts.join(' · ')}</span>` : '';
-    } else {
-      breakdown = entry.champPts > 0 ? `<span class="lb-breakdown">🏆 champion correct!</span>` : '';
-    }
+    // Breakdown: show points earned per round
+    const parts = entry.byRound
+      .filter(r => r.earned > 0)
+      .map(r => `${r.round.split(' ')[0]}: ${r.earned}`)
+      .join(' · ');
+    const breakdown = parts
+      ? `<span class="lb-breakdown">${parts}</span>`
+      : `<span class="lb-breakdown" style="color:var(--muted);font-style:italic;">No correct picks yet</span>`;
 
     row.innerHTML = `
       <span class="lb-rank">${i < 3 ? medals[i] : i+1}</span>
@@ -2323,7 +2321,6 @@ function updateLeaderboard(preds) {
         <span class="lb-name">${entry.name}</span>
         ${breakdown}
       </div>
-      <span class="lb-type">${entry.type}</span>
       <span class="lb-score">${entry.score}pt${entry.score !== 1 ? 's' : ''}</span>`;
 
     // Delete button (only visible when admin is unlocked)
@@ -2370,7 +2367,7 @@ function initApp(firestoreData) {
 
   checkSession();
   document.getElementById('bracket').classList.add('bracket-locked');
-  populateChampSelect();
+  populateScoringKey();
 
   // ── Real-time bracket listener ──
   if (window._fbListen) {
