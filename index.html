@@ -2067,6 +2067,13 @@ function renderRRRound() {
     });
   }
 
+  // Auto-fill locked matches with the real winner so they don't block progress
+  round.forEach(m => {
+    if (isMatchLocked(m.id) && !fullPicks[m.id]) {
+      fullPicks[m.id] = m.winner.id;
+    }
+  });
+
   // Count pickable matches for this round using resolved contestants
   let pickableCount = 0;
   let pickedCount   = 0;
@@ -2268,20 +2275,36 @@ async function submitPrediction() {
 
   if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Please enter your name.'; return; }
 
-  // Require full bracket — all non-bye matches must have a pick
-  const allMatches = ST.rounds.flat();
-  const realMatches = allMatches.filter(m =>
-    m.top && m.top !== 'BYE' && m.bottom && m.bottom !== 'BYE'
-  );
-  const missingPicks = realMatches.filter(m => !fullPicks[m.id]);
+  // Auto-fill any locked matches with the real bracket winner
+  // so late joiners are never blocked by already-played games
+  ST.rounds.forEach((round, ri) => {
+    round.forEach(m => {
+      if (isMatchLocked(m.id) && !fullPicks[m.id]) {
+        fullPicks[m.id] = m.winner.id;
+      }
+    });
+  });
+
+  // Require picks for all remaining unlocked non-bye matches
+  // Use getPredContestants so later rounds resolve from user picks, not real bracket
+  const missingPicks = [];
+  ST.rounds.forEach((round, ri) => {
+    round.forEach(m => {
+      if (isMatchLocked(m.id)) return; // already auto-filled above
+      const [t, b] = getPredContestants(m, ri);
+      const topReal = t && t !== 'BYE' && t.id;
+      const botReal = b && b !== 'BYE' && b.id;
+      if (topReal && botReal && !fullPicks[m.id]) {
+        missingPicks.push({ m, ri });
+      }
+    });
+  });
+
   if (missingPicks.length > 0) {
-    // Find which round the first missing pick is in
-    const firstMissing = missingPicks[0];
-    const roundIdx = ST.rounds.findIndex(r => r.some(m => m.id === firstMissing.id));
+    const firstRi = missingPicks[0].ri;
     msgEl.className = 'pred-msg error';
-    msgEl.textContent = `Please complete all rounds first. You have ${missingPicks.length} pick${missingPicks.length > 1 ? 's' : ''} missing (starting in ${RNAMES[roundIdx] || 'Round ' + (roundIdx+1)}).`;
-    // Jump to that round
-    rrRound = Math.max(0, roundIdx);
+    msgEl.textContent = 'Please complete all rounds first. You have ' + missingPicks.length + ' pick' + (missingPicks.length > 1 ? 's' : '') + ' missing (starting in ' + (RNAMES[firstRi] || 'Round ' + (firstRi+1)) + ').';
+    rrRound = Math.max(0, firstRi);
     renderRRRound();
     return;
   }
