@@ -45,12 +45,23 @@ window._fbGet = async function() {
 // ── Predictions collection ──
 const PREDS_COL = 'predictions';
 
-window._fbSavePrediction = async function(name, picks) {
+window._fbSavePrediction = async function(name, picks, existingDocId) {
   try {
-    const ref = doc(db, PREDS_COL, name.trim().toLowerCase().replace(/\s+/g,'_') + '_' + Date.now());
-    await setDoc(ref, { name: name.trim(), picks, submittedAt: Date.now() });
-    return true;
-  } catch(e) { console.error('Prediction save error:', e); return false; }
+    // Use a stable doc ID based on name so updates overwrite the same document
+    const docId = existingDocId || name.trim().toLowerCase().replace(/[^a-z0-9]/g,'_');
+    const ref = doc(db, PREDS_COL, docId);
+    await setDoc(ref, { name: name.trim(), picks, submittedAt: Date.now(), docId });
+    return docId;
+  } catch(e) { console.error('Prediction save error:', e); return null; }
+};
+
+// Get a single prediction by name key
+window._fbGetPrediction = async function(name) {
+  try {
+    const docId = name.trim().toLowerCase().replace(/[^a-z0-9]/g,'_');
+    const snap = await getDoc(doc(db, PREDS_COL, docId));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  } catch(e) { return null; }
 };
 
 window._fbListenPredictions = function(callback) {
@@ -529,6 +540,48 @@ document.dispatchEvent(new Event('fbReady'));
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+  /* ── Change picks button ── */
+  .btn-change-picks {
+    width: 100%;
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.85rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    margin-top: 10px;
+    transition: all 0.15s;
+  }
+  .btn-change-picks:hover { background: rgba(245,166,35,0.1); }
+  .pick-locked-notice {
+    background: rgba(46,204,113,0.08);
+    border: 1px solid rgba(46,204,113,0.25);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.82rem;
+    color: var(--green);
+    letter-spacing: 0.5px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+  .pick-partial-lock {
+    background: rgba(245,166,35,0.07);
+    border: 1px solid rgba(245,166,35,0.2);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.8rem;
+    color: var(--accent);
+    letter-spacing: 0.5px;
+    line-height: 1.5;
+    margin-bottom: 10px;
+  }
+
   /* ── Fire streak badge ── */
   .streak-badge {
     display: inline-flex;
@@ -978,7 +1031,11 @@ document.dispatchEvent(new Event('fbReady'));
     <button class="panel-close" onclick="closePanel('pickPanel')">✕</button>
   </div>
   <div class="panel-body">
-    <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" />
+    <div style="display:flex;gap:8px;margin-bottom:0;">
+      <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" style="margin-bottom:0;flex:1;" />
+      <button class="pred-btn" style="width:auto;padding:9px 14px;margin-top:0;flex-shrink:0;font-size:0.82rem;" onclick="lookupExistingPick()">Look Up</button>
+    </div>
+    <div style="height:10px;"></div>
     <div class="pred-mode-tabs">
       <button class="pred-tab active" id="tabChamp" onclick="switchPredTab('champ')">🏆 Champion Only</button>
       <button class="pred-tab" id="tabFull" onclick="switchPredTab('full')">📋 Full Bracket</button>
@@ -1008,7 +1065,7 @@ document.dispatchEvent(new Event('fbReady'));
 <!-- ── Leaderboard Panel ── -->
 <div class="slide-panel" id="lbPanel">
   <div class="panel-header">
-    <span class="panel-title">🏅 Leaderboard</span>
+    <span class="panel-title">🏅 Bracket Prediction Leaderboard</span>
     <button class="panel-close" onclick="closePanel('lbPanel')">✕</button>
   </div>
   <div class="panel-body">
@@ -1846,10 +1903,12 @@ document.addEventListener('click', e => {
 });
 
 /* ─── PREDICTIONS & LEADERBOARD ─────────────────────────────── */
-let predMode  = 'champ';
-let fullPicks = {};       // matchId → teamId
-let rrRound   = 0;        // current round index in round-by-round picker
-let allPreds  = [];
+let predMode       = 'champ';
+let fullPicks      = {};       // matchId → teamId
+let rrRound        = 0;        // current round index in round-by-round picker
+let allPreds       = [];
+let myDocId        = null;     // Firestore doc ID for current user's prediction
+let isEditMode     = false;    // true when editing an existing submission
 
 const RNAMES = ['Round 1','Round 2','Quarterfinals','Semifinals','Championship'];
 
@@ -1937,21 +1996,21 @@ function renderRRRound() {
       } else {
         const isSelected = fullPicks[match.id] === raw.id;
         if (isSelected) btn.classList.add('rr-selected');
+        const locked = isMatchLocked(match.id);
+        if (locked) btn.disabled = true;
+        const lockedBadge = locked ? '<span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">🔒 Locked</span>' : '';
         btn.innerHTML = `
           <div>
             <span class="rr-team-label">${raw.label}</span>
             <span class="rr-team-name">${raw.p1} &amp; ${raw.p2}</span>
           </div>
-          ${isSelected ? '<span class="rr-check">✓</span>' : ''}`;
-        btn.addEventListener('click', () => {
-          // If it's a bye match, auto-advance the real team
-          if (topBye || botBye) {
+          ${isSelected ? '<span class="rr-check">✓</span>' : lockedBadge}`;
+        if (!locked) {
+          btn.addEventListener('click', () => {
             fullPicks[match.id] = raw.id;
-          } else {
-            fullPicks[match.id] = raw.id;
-          }
-          renderRRRound();
-        });
+            renderRRRound();
+          });
+        }
       }
       card.appendChild(btn);
     });
@@ -1984,6 +2043,67 @@ function rrNav(dir) {
   renderRRRound();
 }
 
+async function lookupExistingPick() {
+  const name  = document.getElementById('predName').value.trim();
+  const msgEl = document.getElementById('predMsg');
+  if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Enter your name first.'; return; }
+  msgEl.className = 'pred-msg'; msgEl.textContent = 'Looking up...';
+  const existing = await window._fbGetPrediction?.(name);
+  if (existing) {
+    await loadExistingPick(name);
+  } else {
+    isEditMode = false; myDocId = null;
+    msgEl.className = 'pred-msg'; msgEl.textContent = 'No existing pick found — enter a new one below.';
+    document.getElementById('predSubmitBtn').textContent = 'Submit Pick';
+  }
+}
+
+// Check if a match is "locked" (result already confirmed in bracket)
+function isMatchLocked(matchId) {
+  if (!ST) return false;
+  const m = findMatch(matchId);
+  return !!(m && m.winner && m.winner !== 'BYE');
+}
+
+// Returns how many of a user's picks are now locked (can't be changed)
+function countLockedPicks(existingPicks) {
+  if (!existingPicks || existingPicks.type !== 'full') return 0;
+  return Object.entries(existingPicks.matchPicks || {}).filter(([mid]) => isMatchLocked(mid)).length;
+}
+
+// Load an existing prediction into the form for editing
+async function loadExistingPick(name) {
+  if (!window._fbGetPrediction) return;
+  const existing = await window._fbGetPrediction(name);
+  if (!existing) return;
+
+  myDocId    = existing.docId || existing.id;
+  isEditMode = true;
+  const picks = existing.picks;
+
+  // Restore pick type
+  if (picks.type === 'champ') {
+    switchPredTab('champ');
+    document.getElementById('predChampPick').value = picks.champId || '';
+  } else {
+    switchPredTab('full');
+    fullPicks = { ...picks.matchPicks };
+    renderRRRound();
+  }
+
+  // Show edit notice
+  const locked = countLockedPicks(picks);
+  const msgEl  = document.getElementById('predMsg');
+  if (locked > 0) {
+    msgEl.className = 'pred-msg';
+    msgEl.innerHTML = `<span style="color:var(--accent)">✎ Editing your pick — ${locked} match${locked>1?'es':''} are locked and can no longer be changed.</span>`;
+  } else {
+    msgEl.className = 'pred-msg success';
+    msgEl.textContent = '✎ Editing your existing pick.';
+  }
+  document.getElementById('predSubmitBtn').textContent = 'Update Pick';
+}
+
 async function submitPrediction() {
   const name  = document.getElementById('predName').value.trim();
   const msgEl = document.getElementById('predMsg');
@@ -1996,27 +2116,50 @@ async function submitPrediction() {
   if (predMode === 'champ') {
     const champId = document.getElementById('predChampPick').value;
     if (!champId) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Please pick a champion.'; return; }
+
+    // If the championship match is already decided, champion pick is locked
+    const finalMatch = ST?.rounds[ST.rounds.length - 1][0];
+    if (finalMatch?.winner && finalMatch.winner !== 'BYE') {
+      msgEl.className = 'pred-msg error';
+      msgEl.textContent = 'The champion has already been decided — this pick is locked.';
+      return;
+    }
     picks = { type: 'champ', champId };
   } else {
     if (Object.keys(fullPicks).length === 0) {
       msgEl.className = 'pred-msg error'; msgEl.textContent = 'Make at least one pick.'; return;
     }
-    picks = { type: 'full', matchPicks: { ...fullPicks } };
+
+    // Merge: keep existing locked picks, allow changes to unlocked ones
+    let finalMatchPicks = { ...fullPicks };
+    if (isEditMode && myDocId) {
+      // Re-fetch existing to preserve any locked picks that weren't in fullPicks
+      const existing = await window._fbGetPrediction(name);
+      if (existing?.picks?.matchPicks) {
+        Object.entries(existing.picks.matchPicks).forEach(([mid, wid]) => {
+          if (isMatchLocked(mid)) {
+            finalMatchPicks[mid] = wid; // always preserve locked picks
+          }
+        });
+      }
+    }
+    picks = { type: 'full', matchPicks: finalMatchPicks };
   }
 
-  msgEl.textContent = 'Submitting...';
-  const ok = await window._fbSavePrediction(name, picks);
-  if (ok) {
+  msgEl.textContent = 'Saving...';
+  const savedId = await window._fbSavePrediction(name, picks, myDocId);
+  if (savedId) {
+    myDocId    = savedId;
+    isEditMode = true;
     msgEl.className = 'pred-msg success';
-    msgEl.textContent = '✓ Pick submitted! Good luck!';
-    document.getElementById('predName').value = '';
-    document.getElementById('predChampPick').value = '';
+    msgEl.textContent = isEditMode ? '✓ Pick updated! Good luck!' : '✓ Pick submitted! Good luck!';
+    document.getElementById('predSubmitBtn').textContent = 'Update Pick';
     fullPicks = {};
     rrRound = 0;
     if (predMode === 'full') renderRRRound();
   } else {
     msgEl.className = 'pred-msg error';
-    msgEl.textContent = 'Error submitting. Try again.';
+    msgEl.textContent = 'Error saving. Try again.';
   }
 }
 
