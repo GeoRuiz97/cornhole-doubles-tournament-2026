@@ -2447,7 +2447,6 @@ async function lookupExistingPick() {
   const name  = document.getElementById('predName').value.trim();
   const msgEl = document.getElementById('predMsg');
   if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Enter your name first.'; return; }
-  setLookupMsg('Looking up...', '');
   msgEl.className = 'pred-msg'; msgEl.textContent = '';
 
   // Try stable doc ID first
@@ -2466,7 +2465,7 @@ async function lookupExistingPick() {
         renderRRRound();
       }
       const locked = countLockedPicks(picks);
-      setLookupMsg('✓ Pick found — editing below.', 'success');
+      setLookupMsg('', '');
       msgEl.className = 'pred-msg';
       msgEl.innerHTML = locked > 0
         ? `<span style="color:var(--accent)">✎ ${locked} match${locked>1?'es':''} already locked.</span>`
