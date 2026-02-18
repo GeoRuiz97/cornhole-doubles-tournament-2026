@@ -191,6 +191,37 @@ document.dispatchEvent(new Event('fbReady'));
     white-space: nowrap;
   }
   .btn-reset:hover { background: var(--red); color: #fff; }
+  .btn-export {
+    background: transparent;
+    border: 1px solid var(--green);
+    color: var(--green);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 6px 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.18s;
+    white-space: nowrap;
+    display: none;
+  }
+  .btn-export:hover { background: var(--green); color: #fff; }
+  body.admin-unlocked .btn-export { display: inline-block; }
+  @media print {
+    body * { visibility: hidden !important; }
+    #exportPrintArea, #exportPrintArea * { visibility: visible !important; }
+    #exportPrintArea {
+      position: fixed !important;
+      inset: 0 !important;
+      background: white !important;
+      color: black !important;
+      padding: 32px !important;
+      font-family: Arial, sans-serif !important;
+      z-index: 99999 !important;
+      overflow: auto !important;
+    }
+  }
   .btn-reshuffle {
     background: transparent;
     border: 1px solid #3d9bd4;
@@ -1237,6 +1268,7 @@ function clearDownstreamPicks(changedMatchId) {
   </div>
   <span class="hint" id="lockHint">🔒 Bracket is locked — view only</span>
   <div style="display:flex;align-items:center;gap:14px;">
+    <button class="btn-export" id="exportBtn" onclick="exportPredictionsPDF()">⬇ Export Picks</button>
     <button class="btn-reshuffle" id="reshuffleBtn" onclick="reshuffleBracket()" disabled>⇄ Re-Shuffle</button>
     <button class="btn-reset" id="resetBtn" onclick="resetBracket()" disabled>↺ Reset Bracket</button>
     <div class="lock-area" id="lockArea">
@@ -2724,6 +2756,112 @@ async function deletePrediction(docId, name) {
   if (!ok) alert('Error deleting entry. Try again.');
 }
 
+/* ─── EXPORT PICKS TO PDF ───────────────────────────────────── */
+function exportPredictionsPDF() {
+  if (!isUnlocked) return;
+  if (!allPreds || allPreds.length === 0) {
+    alert('No predictions to export yet.');
+    return;
+  }
+
+  const RSHORT  = ['R1','R2','QF','SF','Final'];
+  const now     = new Date().toLocaleString();
+  const scored  = allPreds.map(p => {
+    const s = scorePrediction(p);
+    return { ...p, score: s.total, byRound: s.byRound };
+  }).sort((a,b) => b.score - a.score || (a.submittedAt||0) - (b.submittedAt||0));
+
+  // Build match ID → label lookup
+  const matchLabel = {};
+  ST.rounds.forEach((round, ri) => {
+    round.forEach((m, mi) => {
+      matchLabel[m.id] = `${RNAMES[ri] || 'R'+(ri+1)} Game ${mi+1}`;
+    });
+  });
+
+  // Build team ID → team label lookup
+  const teamLabel = {};
+  TEAMS.forEach(t => { teamLabel[t.id] = `${t.label} (${t.p1} & ${t.p2})`; });
+
+  // Render HTML into print area
+  const area = document.getElementById('exportPrintArea');
+  let html = `
+    <div style="margin-bottom:24px;border-bottom:3px solid #f5a623;padding-bottom:16px;">
+      <div style="font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#888;margin-bottom:4px;">Hardy Diagnostics</div>
+      <div style="font-size:22px;font-weight:bold;color:#000;">🏆 Cornhole Tournament 2026</div>
+      <div style="font-size:14px;color:#555;margin-top:4px;">Bracket Predictions Export &nbsp;·&nbsp; ${now}</div>
+      <div style="font-size:13px;color:#555;margin-top:2px;">${scored.length} participant${scored.length!==1?'s':''}</div>
+    </div>`;
+
+  scored.forEach((pred, idx) => {
+    const rank = idx + 1;
+    const medal = ['🥇','🥈','🥉'][idx] || `#${rank}`;
+    const breakdown = pred.byRound.filter(r=>r.earned>0)
+      .map((r,ri)=>`${RSHORT[ri]||r.round}: ${r.earned}pt`).join(' · ');
+    const submittedDate = pred.submittedAt
+      ? new Date(pred.submittedAt).toLocaleString() : 'Unknown';
+
+    // Build picks table
+    let picksRows = '';
+    if (pred.picks?.matchPicks) {
+      ST.rounds.forEach((round, ri) => {
+        round.forEach(m => {
+          const pickedId = pred.picks.matchPicks[m.id];
+          if (!pickedId) return;
+          const realWinner = m.winner && m.winner !== 'BYE' ? m.winner.id : null;
+          const voided = ['R1G11'].includes(m.id);
+          let status = '';
+          if (voided)            status = '<span style="color:#f5a623;">✦ +1 (voided)</span>';
+          else if (!realWinner)  status = '<span style="color:#888;">Pending</span>';
+          else if (pickedId === realWinner) status = '<span style="color:#27ae60;">✓ Correct</span>';
+          else                   status = '<span style="color:#e74c3c;">✗ Wrong</span>';
+
+          const pts = ROUND_PTS[ri] || Math.pow(2,ri);
+          picksRows += `<tr style="border-bottom:1px solid #eee;">
+            <td style="padding:3px 8px;font-size:11px;color:#555;">${matchLabel[m.id]||m.id}</td>
+            <td style="padding:3px 8px;font-size:11px;">${teamLabel[pickedId]||pickedId}</td>
+            <td style="padding:3px 8px;font-size:11px;text-align:center;">${pts}pt</td>
+            <td style="padding:3px 8px;font-size:11px;">${status}</td>
+          </tr>`;
+        });
+      });
+    }
+
+    html += `
+      <div style="margin-bottom:20px;page-break-inside:avoid;border:1px solid #ddd;border-radius:8px;overflow:hidden;">
+        <div style="background:#f8f8f8;padding:10px 14px;display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid #ddd;">
+          <div>
+            <span style="font-size:16px;font-weight:bold;">${medal} ${pred.name}</span>
+            <span style="font-size:11px;color:#888;margin-left:10px;">Submitted: ${submittedDate}</span>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:18px;font-weight:bold;color:#27ae60;">${pred.score}pts</div>
+            ${breakdown ? `<div style="font-size:10px;color:#888;">${breakdown}</div>` : ''}
+          </div>
+        </div>
+        ${picksRows ? `
+        <table style="width:100%;border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f0f0f0;">
+              <th style="padding:4px 8px;font-size:10px;text-align:left;color:#555;">Match</th>
+              <th style="padding:4px 8px;font-size:10px;text-align:left;color:#555;">Picked</th>
+              <th style="padding:4px 8px;font-size:10px;text-align:center;color:#555;">Pts</th>
+              <th style="padding:4px 8px;font-size:10px;text-align:left;color:#555;">Result</th>
+            </tr>
+          </thead>
+          <tbody>${picksRows}</tbody>
+        </table>` : '<div style="padding:10px 14px;color:#888;font-size:12px;">No picks recorded.</div>'}
+      </div>`;
+  });
+
+  area.innerHTML = html;
+  area.style.display = 'block';
+  setTimeout(() => {
+    window.print();
+    area.style.display = 'none';
+  }, 200);
+}
+
 /* ─── CHAMPION ANNOUNCEMENT OVERLAY ─────────────────────────── */
 let _champOverlayShown = false; // only auto-show once per session
 
@@ -2851,5 +2989,6 @@ if (window._fbReady) {
   });
 }
 </script>
+<div id="exportPrintArea" style="display:none;"></div>
 </body>
 </html>
