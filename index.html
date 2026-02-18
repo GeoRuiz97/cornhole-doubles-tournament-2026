@@ -2586,12 +2586,15 @@ async function submitPrediction() {
   if (savedId) {
     myDocId    = savedId;
     isEditMode = true;
-    msgEl.className = 'pred-msg success';
-    msgEl.textContent = wasEditing ? '✓ Bracket updated! Good luck!' : '✓ Bracket submitted! Good luck!';
-    document.getElementById('predSubmitBtn').textContent = 'Update Bracket';
-    fullPicks = {};
-    rrRound = 0;
+    // Keep fullPicks and rrRound intact so user can see their selections
+    // Just re-render so correct/wrong badges update if any matches are locked
     renderRRRound();
+    document.getElementById('predSubmitBtn').textContent = 'Update Bracket';
+    // Show a persistent helpful message below the button
+    msgEl.className = 'pred-msg success';
+    msgEl.innerHTML = wasEditing
+      ? '✅ Bracket updated! Your picks are saved.<br><span style="color:var(--muted);font-size:0.75rem;">To make more changes, just edit above and click Update Bracket again.</span>'
+      : '✅ Bracket recorded! You\'re all set.<br><span style="color:var(--muted);font-size:0.75rem;">Need to make changes? Type your name and click <strong>Look Up</strong>, then edit your picks.</span>';
   } else {
     msgEl.className = 'pred-msg error';
     msgEl.textContent = 'Error saving. Try again.';
