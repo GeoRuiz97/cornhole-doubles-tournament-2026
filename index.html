@@ -864,6 +864,21 @@ function clearDownstreamPicks(changedMatchId) {
     border-left: 3px solid var(--accent);
   }
   .rr-team-btn:disabled { opacity: 0.4; cursor: default; }
+  /* Correct/wrong result coloring for locked matches */
+  .rr-team-btn.rr-correct {
+    background: rgba(46,204,113,0.12) !important;
+    border-left: 3px solid var(--green) !important;
+    opacity: 1 !important;
+  }
+  .rr-team-btn.rr-correct .rr-team-name { color: var(--green); }
+  .rr-team-btn.rr-correct .rr-team-label { color: rgba(46,204,113,0.7); }
+  .rr-team-btn.rr-wrong {
+    background: rgba(232,69,69,0.08) !important;
+    border-left: 3px solid var(--red) !important;
+    opacity: 1 !important;
+  }
+  .rr-team-btn.rr-wrong .rr-team-name { color: var(--red); opacity: 0.7; }
+  .rr-team-btn.rr-wrong .rr-team-label { color: rgba(232,69,69,0.5); }
   .rr-team-label {
     font-family: 'Barlow Condensed', sans-serif;
     font-size: 0.65rem;
@@ -1971,7 +1986,7 @@ function populateScoringKey() {
       letter-spacing:0.5px;
       white-space:nowrap;
     `;
-    badge.textContent = `${name.split(' ')[0]}: ${ROUND_PTS[i]}pt`;
+    badge.textContent = `${name}: ${ROUND_PTS[i]}pt`;
     el.appendChild(badge);
   });
 }
@@ -2124,13 +2139,32 @@ function renderRRRound() {
         if (isSelected) btn.classList.add('rr-selected');
         const locked = isMatchLocked(match.id);
         if (locked) btn.disabled = true;
-        const lockedBadge = locked ? '<span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">🔒 Locked</span>' : '';
+
+        // Determine correct/wrong state for locked matches where user has submitted
+        let resultClass = '';
+        let resultBadge = '';
+        if (locked && myDocId) {
+          const realWinnerId = findMatch(match.id)?.winner?.id;
+          if (isSelected) {
+            if (realWinnerId === team.id) {
+              resultClass = 'rr-correct';
+              resultBadge = '<span style="margin-left:auto;font-size:0.85rem;">✓</span>';
+            } else {
+              resultClass = 'rr-wrong';
+              resultBadge = '<span style="margin-left:auto;font-size:0.85rem;">✗</span>';
+            }
+          }
+        } else if (locked && !resultBadge) {
+          resultBadge = '<span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">🔒</span>';
+        }
+
+        if (resultClass) btn.classList.add(resultClass);
         btn.innerHTML = `
           <div>
             <span class="rr-team-label">${team.label}</span>
             <span class="rr-team-name">${team.p1} &amp; ${team.p2}</span>
           </div>
-          ${isSelected ? '<span class="rr-check">✓</span>' : lockedBadge}`;
+          ${resultBadge || (isSelected ? '<span class="rr-check">✓</span>' : '')}`;
         if (!locked) {
           btn.addEventListener('click', () => {
             fullPicks[match.id] = team.id;
