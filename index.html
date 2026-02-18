@@ -1895,12 +1895,7 @@ function togglePanel(id) {
 function closePanel(id) {
   document.getElementById(id).classList.remove('open');
 }
-// Close panel when clicking outside
-document.addEventListener('click', e => {
-  if (!e.target.closest('.slide-panel') && !e.target.closest('.fab')) {
-    document.querySelectorAll('.slide-panel').forEach(p => p.classList.remove('open'));
-  }
-});
+// NOTE: No click-outside listener — panels only close via the X button
 
 /* ─── PREDICTIONS & LEADERBOARD ─────────────────────────────── */
 let predMode       = 'champ';
@@ -2048,7 +2043,36 @@ async function lookupExistingPick() {
   const msgEl = document.getElementById('predMsg');
   if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Enter your name first.'; return; }
   msgEl.className = 'pred-msg'; msgEl.textContent = 'Looking up...';
-  const existing = await window._fbGetPrediction?.(name);
+
+  // Try stable doc ID first
+  let existing = await window._fbGetPrediction?.(name);
+
+  // Fallback: search allPreds in memory (catches old docs with timestamp suffix)
+  if (!existing && allPreds.length > 0) {
+    existing = allPreds.find(p => p.name?.trim().toLowerCase() === name.toLowerCase()) || null;
+    if (existing) {
+      // Migrate: re-save under stable doc ID so future lookups work
+      myDocId    = existing.docId || existing.id;
+      isEditMode = true;
+      const picks = existing.picks;
+      if (picks?.type === 'champ') {
+        switchPredTab('champ');
+        document.getElementById('predChampPick').value = picks.champId || '';
+      } else if (picks?.type === 'full') {
+        switchPredTab('full');
+        fullPicks = { ...picks.matchPicks };
+        renderRRRound();
+      }
+      const locked = countLockedPicks(picks);
+      msgEl.className = 'pred-msg success';
+      msgEl.innerHTML = locked > 0
+        ? `<span style="color:var(--accent)">✎ Editing your pick — ${locked} match${locked>1?'es':''} already locked.</span>`
+        : '✎ Found your pick! Make changes and click Update.';
+      document.getElementById('predSubmitBtn').textContent = 'Update Pick';
+      return;
+    }
+  }
+
   if (existing) {
     await loadExistingPick(name);
   } else {
@@ -2112,6 +2136,19 @@ async function submitPrediction() {
 
   if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Please enter your name.'; return; }
 
+  // Block duplicate submissions — must Look Up first to edit
+  if (!isEditMode) {
+    msgEl.textContent = 'Checking for existing pick...';
+    const existing = await window._fbGetPrediction?.(name)
+      || allPreds.find(p => p.name?.trim().toLowerCase() === name.toLowerCase())
+      || null;
+    if (existing) {
+      msgEl.className = 'pred-msg error';
+      msgEl.innerHTML = `You already have a pick under <strong>${name}</strong>. Click <strong>Look Up</strong> to load and edit it.`;
+      return;
+    }
+  }
+
   let picks = {};
   if (predMode === 'champ') {
     const champId = document.getElementById('predChampPick').value;
@@ -2146,14 +2183,19 @@ async function submitPrediction() {
     picks = { type: 'full', matchPicks: finalMatchPicks };
   }
 
+  const wasEditing = isEditMode;
   msgEl.textContent = 'Saving...';
   const savedId = await window._fbSavePrediction(name, picks, myDocId);
   if (savedId) {
     myDocId    = savedId;
     isEditMode = true;
     msgEl.className = 'pred-msg success';
-    msgEl.textContent = isEditMode ? '✓ Pick updated! Good luck!' : '✓ Pick submitted! Good luck!';
+    msgEl.textContent = wasEditing ? '✓ Pick updated! Good luck!' : '✓ Pick submitted! Good luck!';
     document.getElementById('predSubmitBtn').textContent = 'Update Pick';
+    if (!wasEditing) {
+      // Fresh submit — clear form except name so they can see it's locked in
+      document.getElementById('predChampPick').value = picks.champId || '';
+    }
     fullPicks = {};
     rrRound = 0;
     if (predMode === 'full') renderRRRound();
