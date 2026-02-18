@@ -1287,10 +1287,11 @@ function clearDownstreamPicks(changedMatchId) {
   </div>
   <div class="panel-body">
     <!-- Name + lookup -->
-    <div style="display:flex;gap:8px;margin-bottom:10px;">
-      <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" style="margin-bottom:0;flex:1;" />
+    <div style="display:flex;gap:8px;margin-bottom:4px;">
+      <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" style="margin-bottom:0;flex:1;" oninput="setLookupMsg('','')" />
       <button class="pred-btn" style="width:auto;padding:9px 14px;margin-top:0;flex-shrink:0;font-size:0.82rem;" onclick="lookupExistingPick()">Look Up</button>
     </div>
+    <div id="lookupMsg" style="min-height:18px;margin-bottom:8px;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;letter-spacing:0.3px;display:none;"></div>
     <!-- Scoring key -->
     <div id="scoringKey" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
       <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;letter-spacing:1px;color:var(--muted);width:100%;text-transform:uppercase;">Points per correct pick:</span>
@@ -2434,11 +2435,20 @@ function rrNav(dir) {
   renderRRRound();
 }
 
+function setLookupMsg(text, type) {
+  const el = document.getElementById('lookupMsg');
+  if (!el) return;
+  el.textContent = text;
+  el.style.display = text ? 'block' : 'none';
+  el.style.color = type === 'error' ? 'var(--red)' : type === 'success' ? 'var(--green)' : 'var(--muted)';
+}
+
 async function lookupExistingPick() {
   const name  = document.getElementById('predName').value.trim();
   const msgEl = document.getElementById('predMsg');
   if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Enter your name first.'; return; }
-  msgEl.className = 'pred-msg'; msgEl.textContent = 'Looking up...';
+  setLookupMsg('Looking up...', '');
+  msgEl.className = 'pred-msg'; msgEl.textContent = '';
 
   // Try stable doc ID first
   let existing = await window._fbGetPrediction?.(name);
@@ -2456,10 +2466,11 @@ async function lookupExistingPick() {
         renderRRRound();
       }
       const locked = countLockedPicks(picks);
-      msgEl.className = 'pred-msg success';
+      setLookupMsg('✓ Pick found — editing below.', 'success');
+      msgEl.className = 'pred-msg';
       msgEl.innerHTML = locked > 0
-        ? `<span style="color:var(--accent)">✎ Editing your pick — ${locked} match${locked>1?'es':''} already locked.</span>`
-        : '✎ Found your pick! Make changes and click Update.';
+        ? `<span style="color:var(--accent)">✎ ${locked} match${locked>1?'es':''} already locked.</span>`
+        : '';
       document.getElementById('predSubmitBtn').textContent = 'Update Pick';
       return;
     }
@@ -2469,8 +2480,9 @@ async function lookupExistingPick() {
     await loadExistingPick(name);
   } else {
     isEditMode = false; myDocId = null;
-    msgEl.className = 'pred-msg'; msgEl.textContent = 'No existing pick found — enter a new one below.';
-    document.getElementById('predSubmitBtn').textContent = 'Submit Pick';
+    setLookupMsg('No existing pick found — try a different name.', 'error');
+    msgEl.className = 'pred-msg'; msgEl.textContent = '';
+    document.getElementById('predSubmitBtn').textContent = 'Submit Bracket';
   }
 }
 
