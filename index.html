@@ -2090,7 +2090,6 @@ function renderRRRound() {
 function rrNav(dir) {
   if (!ST) return;
   rrRound = Math.max(0, Math.min(ST.rounds.length - 1, rrRound + dir));
-  document.getElementById('predFullMode').style.display = '';
   renderRRRound();
 }
 
@@ -2246,9 +2245,6 @@ async function submitPrediction() {
   }
 }
 
-// Points double each round: R1=1, R2=2, QF=4, SF=8, Championship=16
-const ROUND_PTS = [1, 2, 4, 8, 16];
-
 function scorePrediction(pred) {
   if (!ST) return { total: 0, byRound: [], maxPossible: 0 };
   const picks = pred.picks;
@@ -2377,7 +2373,7 @@ function initApp(firestoreData) {
       if (!isUnlocked) document.getElementById('bracket').classList.add('bracket-locked');
       // Re-score leaderboard with updated bracket state
       updateLeaderboard(allPreds);
-      if (predMode === 'full') renderMiniPicks();
+      renderRRRound();
     });
   }
 
