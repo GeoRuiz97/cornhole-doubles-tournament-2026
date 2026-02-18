@@ -2616,6 +2616,10 @@ async function submitPrediction() {
   }
 }
 
+// Voided matches — everyone gets full points regardless of their pick.
+// Used when a match had bad data (e.g. duplicate team entry).
+const VOIDED_MATCHES = new Set(['R1G11']);
+
 function scorePrediction(pred) {
   if (!ST) return { total: 0, byRound: [], maxPossible: 0 };
   const picks = pred.picks;
@@ -2626,7 +2630,7 @@ function scorePrediction(pred) {
   let maxPossible = 0;
 
   ST.rounds.forEach((round, ri) => {
-    const pts     = ROUND_PTS[ri] || Math.pow(2, ri);
+    const pts       = ROUND_PTS[ri] || Math.pow(2, ri);
     let roundEarned = 0;
     let roundMax    = 0;
 
@@ -2634,7 +2638,11 @@ function scorePrediction(pred) {
       // Skip BYE matches
       if (!match.top || match.top === 'BYE' || !match.bottom || match.bottom === 'BYE') return;
       roundMax += pts;
-      if (match.winner && match.winner !== 'BYE') {
+
+      if (VOIDED_MATCHES.has(match.id)) {
+        // Voided match — award full points to everyone automatically
+        roundEarned += pts;
+      } else if (match.winner && match.winner !== 'BYE') {
         if (picks.matchPicks[match.id] === match.winner.id) roundEarned += pts;
       }
     });
