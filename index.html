@@ -2146,12 +2146,14 @@ function renderRRRound() {
   if (prevBtn) prevBtn.style.display = rrRound === 0 ? 'none' : '';
 
   if (nextBtn) {
-    // Check if all real picks in this round are made
-    const pickableNow = round.filter(m =>
-      m.top && m.top !== 'BYE' && m.bottom && m.bottom !== 'BYE'
-    );
-    const pickedNow   = pickableNow.filter(m => fullPicks[m.id]);
-    const roundDone   = pickedNow.length === pickableNow.length && pickableNow.length > 0;
+    // Check if all real picks in this round are made — use resolved contestants
+    // so later rounds (where m.top/m.bottom are null) work correctly
+    const pickableNow = round.filter(m => {
+      const [t, b] = getPredContestants(m, rrRound);
+      return t && t !== 'BYE' && t.id && b && b !== 'BYE' && b.id;
+    });
+    const pickedNow = pickableNow.filter(m => fullPicks[m.id]);
+    const roundDone = pickedNow.length === pickableNow.length && pickableNow.length > 0;
 
     if (rrRound === totalRounds - 1) {
       nextBtn.textContent = '✓ Done';
