@@ -777,7 +777,21 @@ document.dispatchEvent(new Event('fbReady'));
   .pred-msg.success { color: var(--green); }
   .pred-msg.error   { color: var(--red); }
 
-  /* ── Round-by-round picker ── */
+  /* ── Clear downstream user picks when a pick changes ── */
+function clearDownstreamPicks(changedMatchId) {
+  // Find all matches in later rounds that source from this match (directly or indirectly)
+  const toClear = new Set([changedMatchId]);
+  ST.rounds.forEach(round => {
+    round.forEach(m => {
+      if (toClear.has(m.srcA) || toClear.has(m.srcB)) {
+        delete fullPicks[m.id];
+        toClear.add(m.id);
+      }
+    });
+  });
+}
+
+/* ── Round-by-round picker ── */
   .rr-progress {
     display: flex;
     gap: 4px;
@@ -1964,7 +1978,60 @@ function populateScoringKey() {
 
 function populateChampSelect() { /* no-op — champion-only mode removed */ }
 
+/* ── Clear downstream user picks when a pick changes ── */
+function clearDownstreamPicks(changedMatchId) {
+  // Find all matches in later rounds that source from this match (directly or indirectly)
+  const toClear = new Set([changedMatchId]);
+  ST.rounds.forEach(round => {
+    round.forEach(m => {
+      if (toClear.has(m.srcA) || toClear.has(m.srcB)) {
+        delete fullPicks[m.id];
+        toClear.add(m.id);
+      }
+    });
+  });
+}
+
 /* ── Round-by-round picker ── */
+
+// Resolve which team the user has picked to come out of a source match.
+// Falls back to the actual bracket team for R1 (which has real teams).
+function resolvePickedTeam(srcMatchId) {
+  const srcMatch = findMatch(srcMatchId);
+  if (!srcMatch) return null;
+
+  const pickedId = fullPicks[srcMatchId];
+  if (pickedId) {
+    // Find the team object in R1 — walk back through srcA/srcB recursively
+    return findTeamById(pickedId);
+  }
+  // If no pick yet for that source match, return null (TBD)
+  return null;
+}
+
+function findTeamById(teamId) {
+  for (const round of ST.rounds) {
+    for (const m of round) {
+      if (m.top && m.top !== 'BYE' && m.top.id === teamId) return m.top;
+      if (m.bottom && m.bottom !== 'BYE' && m.bottom.id === teamId) return m.bottom;
+    }
+  }
+  return null;
+}
+
+// Get the two contestants for a match in the user's prediction bracket.
+// For R1 use actual teams; for later rounds resolve from user's picks.
+function getPredContestants(match, ri) {
+  if (ri === 0) {
+    // Round 1: use actual seeded teams
+    return [match.top, match.bottom];
+  }
+  // Later rounds: resolve from user's picks of source matches
+  const topTeam = match.srcA ? resolvePickedTeam(match.srcA) : match.top;
+  const botTeam = match.srcB ? resolvePickedTeam(match.srcB) : match.bottom;
+  return [topTeam, botTeam];
+}
+
 function renderRRRound() {
   if (!ST) return;
   const rounds = ST.rounds;
@@ -1990,32 +2057,44 @@ function renderRRRound() {
   const pts = ROUND_PTS[rrRound] || 1;
   lbl.innerHTML = `${RNAMES[rrRound] || `Round ${rrRound+1}`} <span style="font-size:0.7rem;letter-spacing:1px;color:var(--muted);font-family:'Barlow Condensed',sans-serif;">· ${pts}pt per correct pick</span>`;
 
-  // Count how many picks are needed vs made in this round
-  // BYE matches auto-advance — only count real vs real
-  const pickable = round.filter(m => {
-    const top = m.top; const bot = m.bottom;
-    return top && top !== 'BYE' && bot && bot !== 'BYE';
-  });
-  // Auto-advance BYE matches silently
+  // Auto-advance BYE matches silently (R1 only — later rounds resolved from picks)
+  if (rrRound === 0) {
+    round.forEach(m => {
+      const topBye = m.top === 'BYE' || m.top === null || m.top === undefined;
+      const botBye = m.bottom === 'BYE' || m.bottom === null || m.bottom === undefined;
+      if (topBye && !botBye && m.bottom?.id) fullPicks[m.id] = m.bottom.id;
+      if (botBye && !topBye && m.top?.id)    fullPicks[m.id] = m.top.id;
+    });
+  }
+
+  // Count pickable matches for this round using resolved contestants
+  let pickableCount = 0;
+  let pickedCount   = 0;
   round.forEach(m => {
-    const topBye = m.top === 'BYE' || m.top === null || m.top === undefined;
-    const botBye = m.bottom === 'BYE' || m.bottom === null || m.bottom === undefined;
-    if (topBye && !botBye && m.bottom?.id) fullPicks[m.id] = m.bottom.id;
-    if (botBye && !topBye && m.top?.id)    fullPicks[m.id] = m.top.id;
+    const [topTeam, botTeam] = getPredContestants(m, rrRound);
+    const topReal = topTeam && topTeam !== 'BYE' && topTeam.id;
+    const botReal = botTeam && botTeam !== 'BYE' && botTeam.id;
+    if (topReal && botReal) {
+      pickableCount++;
+      if (fullPicks[m.id]) pickedCount++;
+    } else if ((topReal && !botReal) || (!topReal && botReal)) {
+      // One side is BYE/TBD — auto-advance the real team
+      const realTeam = topReal ? topTeam : botTeam;
+      if (realTeam?.id) fullPicks[m.id] = realTeam.id;
+    }
   });
-  const picked = pickable.filter(m => fullPicks[m.id]);
-  const allPicked = picked.length === pickable.length && pickable.length > 0;
-  sub.innerHTML = `${picked.length} of ${pickable.length} picked` +
+
+  const allPicked = pickedCount === pickableCount && pickableCount > 0;
+  sub.innerHTML = `${pickedCount} of ${pickableCount} picked` +
     (allPicked ? ' <span style="color:var(--green);">✓ Round complete!</span>' : '');
 
   matchC.innerHTML = '';
   round.forEach((match, mi) => {
-    const topRaw = match.top;
-    const botRaw = match.bottom;
-    const topBye = topRaw === 'BYE' || topRaw === null || topRaw === undefined;
-    const botBye = botRaw === 'BYE' || botRaw === null || botRaw === undefined;
+    const [topTeam, botTeam] = getPredContestants(match, rrRound);
+    const topBye = !topTeam || topTeam === 'BYE';
+    const botBye = !botTeam || botTeam === 'BYE';
 
-    // If both are unknown/bye, skip
+    // Skip if both are unknown
     if (topBye && botBye) return;
 
     const card = document.createElement('div');
@@ -2026,28 +2105,31 @@ function renderRRRound() {
     mlabel.textContent = `Game ${mi + 1}`;
     card.appendChild(mlabel);
 
-    [[topRaw, topBye], [botRaw, botBye]].forEach(([raw, isBye]) => {
+    [[topTeam, topBye], [botTeam, botBye]].forEach(([team, isBye]) => {
       const btn = document.createElement('button');
       btn.className = 'rr-team-btn';
 
-      if (isBye || raw === null || raw === undefined) {
+      if (isBye || !team) {
         btn.disabled = true;
-        btn.innerHTML = `<span class="rr-team-name" style="color:var(--muted);font-style:italic;">TBD / BYE</span>`;
+        btn.innerHTML = `<span class="rr-team-name" style="color:var(--muted);font-style:italic;">TBD</span>`;
       } else {
-        const isSelected = fullPicks[match.id] === raw.id;
+        const isSelected = fullPicks[match.id] === team.id;
         if (isSelected) btn.classList.add('rr-selected');
         const locked = isMatchLocked(match.id);
         if (locked) btn.disabled = true;
         const lockedBadge = locked ? '<span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">🔒 Locked</span>' : '';
         btn.innerHTML = `
           <div>
-            <span class="rr-team-label">${raw.label}</span>
-            <span class="rr-team-name">${raw.p1} &amp; ${raw.p2}</span>
+            <span class="rr-team-label">${team.label}</span>
+            <span class="rr-team-name">${team.p1} &amp; ${team.p2}</span>
           </div>
           ${isSelected ? '<span class="rr-check">✓</span>' : lockedBadge}`;
         if (!locked) {
           btn.addEventListener('click', () => {
-            fullPicks[match.id] = raw.id;
+            fullPicks[match.id] = team.id;
+            // If user changes a pick, clear any downstream picks that depended on it
+            clearDownstreamPicks(match.id);
+            fullPicks[match.id] = team.id; // re-set after clearing
             renderRRRound();
           });
         }
