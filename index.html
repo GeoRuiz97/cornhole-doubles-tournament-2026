@@ -89,7 +89,7 @@ window._fbImports = { collection, onSnapshot: onSnap2 };
 const SCHED_DOC = doc(db, 'bracket', 'schedules');
 
 window._fbSaveSchedules = async function(schedules) {
-  try { await setDoc(SCHED_DOC, { schedules }); } catch(e) { console.error('Schedule save error:', e); }
+  try { await setDoc(SCHED_DOC, { schedules }); return true; } catch(e) { console.error('Schedule save error:', e); return false; }
 };
 
 window._fbListenSchedules = function(callback) {
@@ -2147,7 +2147,7 @@ function render() {
         if (sched) {
           const schedEl = document.createElement('div');
           schedEl.className = 'match-schedule';
-          schedEl.innerHTML = `<span class="match-schedule-icon">🗓</span>${sched.date}${sched.time ? ' · ' + sched.time : ''}`;
+          schedEl.innerHTML = `<span class="match-schedule-icon">🗓</span>Playing ${sched.date}${sched.time ? ' at ' + sched.time : ''}`;
           block.appendChild(schedEl);
         }
         // Admin-only "Add/Edit Schedule" button
@@ -2949,7 +2949,11 @@ async function saveSchedule() {
   document.getElementById('schedDateInput').style.borderColor = '';
   if (!_schedEditMatchId) return;
   matchSchedules[_schedEditMatchId] = { date, time };
-  await window._fbSaveSchedules?.(matchSchedules);
+  const saved = await window._fbSaveSchedules?.(matchSchedules);
+  if (saved === false) {
+    alert('Error saving schedule — check Firestore rules for bracket/schedules.');
+    return;
+  }
   closeScheduleModal();
   render();
 }
