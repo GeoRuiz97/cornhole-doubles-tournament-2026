@@ -663,12 +663,35 @@ document.dispatchEvent(new Event('fbReady'));
     padding: 32px 28px 28px;
     width: min(480px, 100%);
     position: relative;
-    box-shadow: 0 0 60px rgba(245,166,35,0.12), 0 24px 60px rgba(0,0,0,0.7);
-    animation: winCardPop 0.45s cubic-bezier(0.2,0.9,0.3,1) forwards;
+    box-shadow: 0 0 60px rgba(245,166,35,0.15), 0 24px 60px rgba(0,0,0,0.7);
+    animation: winCardEntrance 0.6s cubic-bezier(0.2,1.3,0.4,1) forwards;
+    overflow: hidden;
   }
-  @keyframes winCardPop {
-    from { transform: scale(0.88) translateY(20px); opacity: 0; }
-    to   { transform: scale(1)    translateY(0);    opacity: 1; }
+  /* Shimmer sweep across card on entry */
+  .win-popup-card::after {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(245,166,35,0.07), transparent);
+    animation: winShimmer 0.9s 0.3s ease forwards;
+  }
+  @keyframes winCardEntrance {
+    0%   { transform: scale(0.5) rotate(-4deg) translateY(40px); opacity: 0; }
+    60%  { transform: scale(1.04) rotate(1deg) translateY(-6px); opacity: 1; }
+    80%  { transform: scale(0.98) rotate(-0.5deg) translateY(2px); }
+    100% { transform: scale(1) rotate(0deg) translateY(0); opacity: 1; }
+  }
+  @keyframes winShimmer {
+    from { left: -100%; }
+    to   { left: 160%; }
+  }
+  .win-popup-teams {
+    animation: teamsSlideIn 0.5s 0.2s cubic-bezier(0.2,0.9,0.3,1) both;
+  }
+  @keyframes teamsSlideIn {
+    from { transform: translateX(-20px); opacity: 0; }
+    to   { transform: translateX(0);     opacity: 1; }
   }
   .win-popup-close {
     position: absolute;
@@ -703,6 +726,7 @@ document.dispatchEvent(new Event('fbReady'));
     background-clip: text;
     line-height: 1.1;
     margin-bottom: 6px;
+    animation: teamsSlideIn 0.5s 0.2s cubic-bezier(0.2,0.9,0.3,1) both;
   }
   .win-popup-vs {
     font-family: 'Barlow Condensed', sans-serif;
@@ -3079,11 +3103,11 @@ function getLatestWin() {
 
 const WIN_TEMPLATES = [
   (w, l) => `🔥 ${w.p1} & ${w.p2} came to play and they mean business. ${l.p1} & ${l.p2} never saw it coming!`,
-  (w, l) => `💪 Bags were flying and ${w.label} didn't miss. ${l.label} put up a fight but it wasn't enough.`,
-  (w, l) => `🎯 Hole after hole, ${w.p1} & ${w.p2} kept the pressure on. ${l.label} heads home, but heads held high.`,
-  (w, l) => `👑 The crowd went wild as ${w.label} punched their ticket to the next round. Better luck next time, ${l.label}!`,
+  (w, l) => `💪 Bags were flying and ${w.p1} & ${w.p2} didn't miss. ${l.p1} & ${l.p2} put up a fight but it wasn't enough.`,
+  (w, l) => `🎯 Hole after hole, ${w.p1} & ${w.p2} kept the pressure on. ${l.p1} & ${l.p2} head home, but heads held high.`,
+  (w, l) => `👑 The crowd went wild as ${w.p1} & ${w.p2} punched their ticket to the next round. Better luck next time, ${l.p1} & ${l.p2}!`,
   (w, l) => `🌶️ ${w.p1} & ${w.p2} were absolutely ON FIRE. ${l.p1} & ${l.p2} didn't stand a chance today.`,
-  (w, l) => `🏆 It was a battle of bags and ${w.label} came out swinging. ${l.label} bow out gracefully — respect!`,
+  (w, l) => `🏆 It was a battle of bags and ${w.p1} & ${w.p2} came out swinging. ${l.p1} & ${l.p2} bow out gracefully — respect!`,
   (w, l) => `🎉 Sliding right into the next round, ${w.p1} & ${w.p2} showed why they're a force to be reckoned with!`,
 ];
 
@@ -3098,7 +3122,7 @@ async function generateWinMessage(winner, loser, roundName) {
         max_tokens: 120,
         messages: [{
           role: 'user',
-          content: `Write a single fun, energetic, hype sentence (max 30 words) announcing that the cornhole doubles team "${winner.p1} & ${winner.p2}" (team label: ${winner.label}) just beat "${loser.p1} & ${loser.p2}" (team label: ${loser.label}) in the ${roundName} of the Hardy Diagnostics Cornhole Tournament 2026. Be playful and exciting. Use 1-2 emojis. No quotes around the output.`
+          content: `Write a single fun, energetic, hype sentence (max 30 words) announcing that "${winner.p1} & ${winner.p2}" just beat "${loser.p1} & ${loser.p2}" in the ${roundName} of the Hardy Diagnostics Cornhole Tournament 2026. ONLY use their first and last names — never use team numbers or labels. Be playful and exciting. Use 1-2 emojis. No quotes around the output.`
         }]
       })
     });
@@ -3118,8 +3142,8 @@ async function showWinPopup() {
   _winPopupShown = true;
 
   const { winner, loser, roundName } = latest;
-  document.getElementById('wpTeams').textContent = winner.label;
-  document.getElementById('wpVs').textContent = `defeated ${loser.label}`;
+  document.getElementById('wpTeams').textContent = `${winner.p1} & ${winner.p2}`;
+  document.getElementById('wpVs').textContent = `defeated ${loser.p1} & ${loser.p2}`;
   document.getElementById('wpRound').textContent = roundName;
   document.getElementById('wpMsg').textContent = 'Generating match recap...';
   document.getElementById('wpMsg').className = 'win-popup-msg loading';
