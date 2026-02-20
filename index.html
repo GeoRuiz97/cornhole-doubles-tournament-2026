@@ -636,6 +636,120 @@ document.dispatchEvent(new Event('fbReady'));
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
+  /* ── Win Announcement Popup ── */
+  #winPopup {
+    position: fixed;
+    inset: 0;
+    z-index: 7000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(7,9,14,0.7);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    padding: 20px;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.4s ease;
+  }
+  #winPopup.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+  .win-popup-card {
+    background: linear-gradient(150deg, #1a2030 0%, #0e1117 100%);
+    border: 1px solid rgba(245,166,35,0.3);
+    border-radius: 18px;
+    padding: 32px 28px 28px;
+    width: min(480px, 100%);
+    position: relative;
+    box-shadow: 0 0 60px rgba(245,166,35,0.12), 0 24px 60px rgba(0,0,0,0.7);
+    animation: winCardPop 0.45s cubic-bezier(0.2,0.9,0.3,1) forwards;
+  }
+  @keyframes winCardPop {
+    from { transform: scale(0.88) translateY(20px); opacity: 0; }
+    to   { transform: scale(1)    translateY(0);    opacity: 1; }
+  }
+  .win-popup-close {
+    position: absolute;
+    top: 14px; right: 14px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 0.85rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: all 0.15s;
+    z-index: 1;
+  }
+  .win-popup-close:hover { background: rgba(255,255,255,0.12); color: var(--text); }
+  .win-popup-eyebrow {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.7rem;
+    letter-spacing: 5px;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 10px;
+  }
+  .win-popup-teams {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: clamp(1.6rem, 5vw, 2.4rem);
+    letter-spacing: 2px;
+    background: linear-gradient(135deg, #f5a623 0%, #f7dc6f 60%, #f5a623 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    line-height: 1.1;
+    margin-bottom: 6px;
+  }
+  .win-popup-vs {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.8rem;
+    color: var(--muted);
+    letter-spacing: 2px;
+    margin-bottom: 16px;
+  }
+  .win-popup-msg {
+    font-family: 'Barlow', sans-serif;
+    font-size: 0.95rem;
+    color: var(--text);
+    line-height: 1.55;
+    border-left: 3px solid rgba(245,166,35,0.4);
+    padding-left: 14px;
+    margin-bottom: 20px;
+    min-height: 48px;
+  }
+  .win-popup-msg.loading {
+    color: var(--muted);
+    font-style: italic;
+    animation: msgPulse 1.2s ease-in-out infinite;
+  }
+  @keyframes msgPulse {
+    0%,100% { opacity: 0.4; }
+    50%      { opacity: 0.9; }
+  }
+  .win-popup-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 1px;
+    color: var(--muted);
+  }
+  .win-popup-round-badge {
+    background: rgba(245,166,35,0.1);
+    border: 1px solid rgba(245,166,35,0.25);
+    color: var(--accent);
+    border-radius: 4px;
+    padding: 2px 8px;
+    font-size: 0.68rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+  }
+
   /* ── Champion Announcement Overlay ── */
   #champOverlay {
     position: fixed;
@@ -1445,6 +1559,21 @@ document.dispatchEvent(new Event('fbReady'));
     <div class="champ-overlay-body">
       <div class="champ-overlay-lb-title">Final Standings</div>
       <div class="champ-overlay-lb" id="coLeaderboard"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Win Announcement Popup ── -->
+<div id="winPopup" onclick="if(event.target===this)closeWinPopup()">
+  <div class="win-popup-card">
+    <button class="win-popup-close" onclick="closeWinPopup()">✕</button>
+    <div class="win-popup-eyebrow" id="wpEyebrow">🎉 Latest Result</div>
+    <div class="win-popup-teams" id="wpTeams"></div>
+    <div class="win-popup-vs" id="wpVs"></div>
+    <div class="win-popup-msg loading" id="wpMsg">Generating match recap...</div>
+    <div class="win-popup-footer">
+      <span class="win-popup-round-badge" id="wpRound"></span>
+      <span id="wpDismissHint" style="font-size:0.65rem;opacity:0.5;">Tap outside to dismiss</span>
     </div>
   </div>
 </div>
@@ -2924,6 +3053,86 @@ async function deletePrediction(docId, name) {
   if (!ok) alert('Error deleting entry. Try again.');
 }
 
+/* ─── WIN ANNOUNCEMENT POPUP ────────────────────────────────── */
+let _winPopupShown = false;
+
+function closeWinPopup() {
+  document.getElementById('winPopup').classList.remove('visible');
+}
+
+function getLatestWin() {
+  if (!ST) return null;
+  // Walk rounds in reverse to find the most recent completed match
+  for (let ri = ST.rounds.length - 1; ri >= 0; ri--) {
+    const round = ST.rounds[ri];
+    for (let mi = round.length - 1; mi >= 0; mi--) {
+      const m = round[mi];
+      if (m.winner && m.winner !== 'BYE' && m.top && m.bottom &&
+          m.top !== 'BYE' && m.bottom !== 'BYE') {
+        const loser = m.winner.id === m.top.id ? m.bottom : m.top;
+        return { winner: m.winner, loser, roundName: RNAMES[ri] || `Round ${ri+1}`, matchId: m.id };
+      }
+    }
+  }
+  return null;
+}
+
+const WIN_TEMPLATES = [
+  (w, l) => `🔥 ${w.p1} & ${w.p2} came to play and they mean business. ${l.p1} & ${l.p2} never saw it coming!`,
+  (w, l) => `💪 Bags were flying and ${w.label} didn't miss. ${l.label} put up a fight but it wasn't enough.`,
+  (w, l) => `🎯 Hole after hole, ${w.p1} & ${w.p2} kept the pressure on. ${l.label} heads home, but heads held high.`,
+  (w, l) => `👑 The crowd went wild as ${w.label} punched their ticket to the next round. Better luck next time, ${l.label}!`,
+  (w, l) => `🌶️ ${w.p1} & ${w.p2} were absolutely ON FIRE. ${l.p1} & ${l.p2} didn't stand a chance today.`,
+  (w, l) => `🏆 It was a battle of bags and ${w.label} came out swinging. ${l.label} bow out gracefully — respect!`,
+  (w, l) => `🎉 Sliding right into the next round, ${w.p1} & ${w.p2} showed why they're a force to be reckoned with!`,
+];
+
+async function generateWinMessage(winner, loser, roundName) {
+  const fallback = WIN_TEMPLATES[Math.floor(Math.random() * WIN_TEMPLATES.length)](winner, loser);
+  try {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 120,
+        messages: [{
+          role: 'user',
+          content: `Write a single fun, energetic, hype sentence (max 30 words) announcing that the cornhole doubles team "${winner.p1} & ${winner.p2}" (team label: ${winner.label}) just beat "${loser.p1} & ${loser.p2}" (team label: ${loser.label}) in the ${roundName} of the Hardy Diagnostics Cornhole Tournament 2026. Be playful and exciting. Use 1-2 emojis. No quotes around the output.`
+        }]
+      })
+    });
+    const data = await response.json();
+    const text = data?.content?.[0]?.text?.trim();
+    return text && text.length > 10 ? text : fallback;
+  } catch(e) {
+    return fallback;
+  }
+}
+
+async function showWinPopup() {
+  if (_winPopupShown) return;
+  const latest = getLatestWin();
+  if (!latest) return;
+
+  _winPopupShown = true;
+
+  const { winner, loser, roundName } = latest;
+  document.getElementById('wpTeams').textContent = winner.label;
+  document.getElementById('wpVs').textContent = `defeated ${loser.label}`;
+  document.getElementById('wpRound').textContent = roundName;
+  document.getElementById('wpMsg').textContent = 'Generating match recap...';
+  document.getElementById('wpMsg').className = 'win-popup-msg loading';
+
+  // Show popup immediately, then load the AI message
+  document.getElementById('winPopup').classList.add('visible');
+
+  const msg = await generateWinMessage(winner, loser, roundName);
+  const msgEl = document.getElementById('wpMsg');
+  msgEl.textContent = msg;
+  msgEl.className = 'win-popup-msg';
+}
+
 /* ─── MATCH SCHEDULES ───────────────────────────────────────── */
 let _schedEditMatchId = null;
 
@@ -3217,6 +3426,9 @@ function initApp(firestoreData) {
       render();
     });
   }
+
+  // ── Show win popup once per session after a short delay ──
+  setTimeout(() => showWinPopup(), 1200);
 }
 
 // Wait for Firebase to be ready, then load state + schedules before first render
