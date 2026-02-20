@@ -110,6 +110,7 @@ window._fbReady = true;
 document.dispatchEvent(new Event('fbReady'));
 </script>
 <style>
+
   :root {
     --bg:       #0e1117;
     --surface:  #161b25;
@@ -1081,21 +1082,6 @@ document.dispatchEvent(new Event('fbReady'));
   }
   #editPicksBtn:hover { background: rgba(245,166,35,0.2); border-color: var(--accent); }
   #editPicksBtn.visible { display: block; }
-
-  /* ── Clear downstream user picks when a pick changes ── */
-function clearDownstreamPicks(changedMatchId) {
-  // Find all matches in later rounds that source from this match (directly or indirectly)
-  const toClear = new Set([changedMatchId]);
-  ST.rounds.forEach(round => {
-    round.forEach(m => {
-      if (toClear.has(m.srcA) || toClear.has(m.srcB)) {
-        delete fullPicks[m.id];
-        toClear.add(m.id);
-      }
-    });
-  });
-}
-
 /* ── Round-by-round picker ── */
   .rr-progress {
     display: flex;
@@ -1317,6 +1303,8 @@ function clearDownstreamPicks(changedMatchId) {
   }
   .lb-delete:hover { color: var(--red); background: rgba(232,69,69,0.1); }
   body.admin-unlocked .lb-delete { display: inline-flex; align-items: center; }
+
+/* ─── TEAMS ─────────────────────────────────────────────────── */
 </style>
 </head>
 <body>
@@ -1461,9 +1449,46 @@ function clearDownstreamPicks(changedMatchId) {
   </div>
 </div>
 
-<script>
-/* ─── TEAMS ─────────────────────────────────────────────────── */
-const TEAMS = [
+<!-- ── Schedule Editor Modal ── -->
+<div id="scheduleModal" onclick="if(event.target===this)closeScheduleModal()" style="
+  display:none; position:fixed; inset:0; z-index:6000;
+  align-items:center; justify-content:center;
+  background:rgba(7,9,14,0.8); backdrop-filter:blur(6px); padding:20px;">
+  <div style="
+    background:#161b25; border:1px solid rgba(245,166,35,0.3);
+    border-radius:14px; padding:28px; width:min(360px,100%);
+    box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:3px;color:var(--accent);margin-bottom:18px;">🗓 Set Match Schedule</div>
+    <label style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px;">Date</label>
+    <input id="schedDateInput" type="text" placeholder="e.g. Feb 21" maxlength="30"
+      style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);color:var(--text);
+             font-family:'Barlow Condensed',sans-serif;font-size:0.95rem;padding:8px 12px;border-radius:6px;margin-bottom:14px;outline:none;" />
+    <label style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px;">Time <span style="font-size:0.7rem;opacity:0.6;">(optional)</span></label>
+    <input id="schedTimeInput" type="text" placeholder="e.g. 2:00 PM" maxlength="20"
+      style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);color:var(--text);
+             font-family:'Barlow Condensed',sans-serif;font-size:0.95rem;padding:8px 12px;border-radius:6px;margin-bottom:20px;outline:none;" />
+    <div style="display:flex;gap:10px;">
+      <button onclick="saveSchedule()" style="
+        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
+        background:rgba(245,166,35,0.15);border:1px solid var(--accent);color:var(--accent);
+        padding:9px;border-radius:6px;cursor:pointer;transition:all 0.15s;"
+        onmouseover="this.style.background='rgba(245,166,35,0.25)'"
+        onmouseout="this.style.background='rgba(245,166,35,0.15)'">Save</button>
+      <button onclick="clearSchedule()" style="
+        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
+        background:rgba(232,69,69,0.08);border:1px solid rgba(232,69,69,0.35);color:var(--red);
+        padding:9px;border-radius:6px;cursor:pointer;transition:all 0.15s;"
+        onmouseover="this.style.background='rgba(232,69,69,0.18)'"
+        onmouseout="this.style.background='rgba(232,69,69,0.08)'">Remove</button>
+      <button onclick="closeScheduleModal()" style="
+        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
+        background:var(--card);border:1px solid var(--border);color:var(--muted);
+        padding:9px;border-radius:6px;cursor:pointer;">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>const TEAMS = [
   { id:'T1',  label:'Team 1',  p1:'Alani Vasquez',     p2:'Geo Ruiz' },
   { id:'T2',  label:'Team 2',  p1:'Wes Koyama',        p2:'Ernesto Diaz' },
   { id:'T3',  label:'Team 3',  p1:'Byanca Villalba',   p2:'Arturo Villalba' },
@@ -2937,10 +2962,6 @@ async function clearSchedule() {
   render();
 }
 
-// Close modal on backdrop click
-document.getElementById('scheduleModal').addEventListener('click', function(e) {
-  if (e.target === this) closeScheduleModal();
-});
 
 /* ─── EXPORT PICKS TO PDF ───────────────────────────────────── */
 function exportPredictionsPDF() {
@@ -3050,6 +3071,23 @@ function exportPredictionsPDF() {
     }, 500);
   }, 300);
 }
+
+
+
+/* ── Clear downstream user picks when a pick changes ── */
+function clearDownstreamPicks(changedMatchId) {
+  // Find all matches in later rounds that source from this match (directly or indirectly)
+  const toClear = new Set([changedMatchId]);
+  ST.rounds.forEach(round => {
+    round.forEach(m => {
+      if (toClear.has(m.srcA) || toClear.has(m.srcB)) {
+        delete fullPicks[m.id];
+        toClear.add(m.id);
+      }
+    });
+  });
+}
+
 
 /* ─── CHAMPION ANNOUNCEMENT OVERLAY ─────────────────────────── */
 let _champOverlayShown = false; // only auto-show once per session
@@ -3187,44 +3225,5 @@ if (window._fbReady) {
 }
 </script>
 <div id="exportPrintArea" style="display:none;"></div>
-
-<!-- ── Schedule Editor Modal ── -->
-<div id="scheduleModal" style="
-  display:none; position:fixed; inset:0; z-index:6000;
-  align-items:center; justify-content:center;
-  background:rgba(7,9,14,0.8); backdrop-filter:blur(6px); padding:20px;">
-  <div style="
-    background:#161b25; border:1px solid rgba(245,166,35,0.3);
-    border-radius:14px; padding:28px; width:min(360px,100%);
-    box-shadow:0 20px 60px rgba(0,0,0,0.6);">
-    <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:3px;color:var(--accent);margin-bottom:18px;">🗓 Set Match Schedule</div>
-    <label style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px;">Date</label>
-    <input id="schedDateInput" type="text" placeholder="e.g. Feb 21" maxlength="30"
-      style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);color:var(--text);
-             font-family:'Barlow Condensed',sans-serif;font-size:0.95rem;padding:8px 12px;border-radius:6px;margin-bottom:14px;outline:none;" />
-    <label style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px;">Time <span style="font-size:0.7rem;opacity:0.6;">(optional)</span></label>
-    <input id="schedTimeInput" type="text" placeholder="e.g. 2:00 PM" maxlength="20"
-      style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);color:var(--text);
-             font-family:'Barlow Condensed',sans-serif;font-size:0.95rem;padding:8px 12px;border-radius:6px;margin-bottom:20px;outline:none;" />
-    <div style="display:flex;gap:10px;">
-      <button onclick="saveSchedule()" style="
-        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
-        background:rgba(245,166,35,0.15);border:1px solid var(--accent);color:var(--accent);
-        padding:9px;border-radius:6px;cursor:pointer;transition:all 0.15s;"
-        onmouseover="this.style.background='rgba(245,166,35,0.25)'"
-        onmouseout="this.style.background='rgba(245,166,35,0.15)'">Save</button>
-      <button onclick="clearSchedule()" style="
-        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
-        background:rgba(232,69,69,0.08);border:1px solid rgba(232,69,69,0.35);color:var(--red);
-        padding:9px;border-radius:6px;cursor:pointer;transition:all 0.15s;"
-        onmouseover="this.style.background='rgba(232,69,69,0.18)'"
-        onmouseout="this.style.background='rgba(232,69,69,0.08)'">Remove</button>
-      <button onclick="closeScheduleModal()" style="
-        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
-        background:var(--card);border:1px solid var(--border);color:var(--muted);
-        padding:9px;border-radius:6px;cursor:pointer;">Cancel</button>
-    </div>
-  </div>
-</div>
 </body>
 </html>
