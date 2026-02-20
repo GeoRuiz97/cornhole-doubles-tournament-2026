@@ -85,6 +85,26 @@ window._fbListenPredictions = function(callback) {
 import { collection, onSnapshot as onSnap2 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 window._fbImports = { collection, onSnapshot: onSnap2 };
 
+// ── Match Schedules ──
+const SCHED_DOC = doc(db, 'bracket', 'schedules');
+
+window._fbSaveSchedules = async function(schedules) {
+  try { await setDoc(SCHED_DOC, { schedules }); } catch(e) { console.error('Schedule save error:', e); }
+};
+
+window._fbListenSchedules = function(callback) {
+  onSnapshot(SCHED_DOC, snap => {
+    callback(snap.exists() ? (snap.data().schedules || {}) : {});
+  });
+};
+
+window._fbGetSchedules = async function() {
+  try {
+    const snap = await getDoc(SCHED_DOC);
+    return snap.exists() ? (snap.data().schedules || {}) : {};
+  } catch(e) { return {}; }
+};
+
 // Signal that Firebase is ready
 window._fbReady = true;
 document.dispatchEvent(new Event('fbReady'));
@@ -453,6 +473,37 @@ document.dispatchEvent(new Event('fbReady'));
     margin-bottom: 5px;
     padding-left: 2px;
   }
+
+  .match-schedule {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.65rem;
+    letter-spacing: 0.5px;
+    color: var(--accent);
+    text-align: center;
+    margin-bottom: 3px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .btn-schedule {
+    display: none;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.58rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: none;
+    border: 1px dashed rgba(245,166,35,0.3);
+    color: rgba(245,166,35,0.5);
+    border-radius: 3px;
+    padding: 2px 6px;
+    cursor: pointer;
+    margin: 0 auto 4px;
+    transition: all 0.15s;
+    width: 100%;
+  }
+  .btn-schedule:hover { border-color: var(--accent); color: var(--accent); background: rgba(245,166,35,0.05); }
+  body.admin-unlocked .btn-schedule { display: block; }
 
   /* Match card */
   .match-card {
@@ -2064,6 +2115,27 @@ function render() {
       lbl.textContent = `Game ${mi + 1}`;
       block.appendChild(lbl);
 
+      // Schedule display / admin button (only for unplayed matches)
+      const isPlayed = !!(match.winner && match.winner !== 'BYE');
+      const sched    = matchSchedules[match.id];
+      if (!isPlayed) {
+        if (sched) {
+          const schedEl = document.createElement('div');
+          schedEl.className = 'match-schedule';
+          schedEl.innerHTML = `<span class="match-schedule-icon">🗓</span>${sched.date}${sched.time ? ' · ' + sched.time : ''}`;
+          block.appendChild(schedEl);
+        }
+        // Admin-only "Add/Edit Schedule" button
+        const schedBtn = document.createElement('button');
+        schedBtn.className = 'btn-schedule';
+        schedBtn.textContent = sched ? '✏ Edit Schedule' : '+ Add Schedule';
+        schedBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openScheduleEditor(match.id, sched);
+        });
+        block.appendChild(schedBtn);
+      }
+
       // Card
       const card = document.createElement('div');
       card.className = 'match-card';
@@ -2247,7 +2319,8 @@ function closePanel(id) {
 // NOTE: No click-outside listener — panels only close via the X button
 
 /* ─── PREDICTIONS & LEADERBOARD ─────────────────────────────── */
-let fullPicks  = {};   // matchId → teamId
+let fullPicks      = {};   // matchId → teamId
+let matchSchedules = {}; // matchId → { date, time } strings
 let rrRound    = 0;    // current round index in round-by-round picker
 let allPreds   = [];
 let myDocId    = null; // Firestore doc ID for current user's prediction
@@ -2826,6 +2899,49 @@ async function deletePrediction(docId, name) {
   if (!ok) alert('Error deleting entry. Try again.');
 }
 
+/* ─── MATCH SCHEDULES ───────────────────────────────────────── */
+let _schedEditMatchId = null;
+
+function openScheduleEditor(matchId, current) {
+  if (!isUnlocked) return;
+  _schedEditMatchId = matchId;
+  document.getElementById('schedDateInput').value = current?.date || '';
+  document.getElementById('schedTimeInput').value = current?.time || '';
+  const modal = document.getElementById('scheduleModal');
+  modal.style.display = 'flex';
+  document.getElementById('schedDateInput').focus();
+}
+
+function closeScheduleModal() {
+  document.getElementById('scheduleModal').style.display = 'none';
+  _schedEditMatchId = null;
+}
+
+async function saveSchedule() {
+  const date = document.getElementById('schedDateInput').value.trim();
+  const time = document.getElementById('schedTimeInput').value.trim();
+  if (!date) { document.getElementById('schedDateInput').style.borderColor='var(--red)'; return; }
+  document.getElementById('schedDateInput').style.borderColor = '';
+  if (!_schedEditMatchId) return;
+  matchSchedules[_schedEditMatchId] = { date, time };
+  await window._fbSaveSchedules?.(matchSchedules);
+  closeScheduleModal();
+  render();
+}
+
+async function clearSchedule() {
+  if (!_schedEditMatchId) return;
+  delete matchSchedules[_schedEditMatchId];
+  await window._fbSaveSchedules?.(matchSchedules);
+  closeScheduleModal();
+  render();
+}
+
+// Close modal on backdrop click
+document.getElementById('scheduleModal').addEventListener('click', function(e) {
+  if (e.target === this) closeScheduleModal();
+});
+
 /* ─── EXPORT PICKS TO PDF ───────────────────────────────────── */
 function exportPredictionsPDF() {
   if (!isUnlocked) return;
@@ -3051,6 +3167,14 @@ function initApp(firestoreData) {
       }
     });
   }
+
+  // ── Real-time schedule listener ──
+  if (window._fbListenSchedules) {
+    window._fbListenSchedules(scheds => {
+      matchSchedules = scheds;
+      render();
+    });
+  }
 }
 
 // Wait for Firebase to be ready, then load state
@@ -3063,5 +3187,44 @@ if (window._fbReady) {
 }
 </script>
 <div id="exportPrintArea" style="display:none;"></div>
+
+<!-- ── Schedule Editor Modal ── -->
+<div id="scheduleModal" style="
+  display:none; position:fixed; inset:0; z-index:6000;
+  align-items:center; justify-content:center;
+  background:rgba(7,9,14,0.8); backdrop-filter:blur(6px); padding:20px;">
+  <div style="
+    background:#161b25; border:1px solid rgba(245,166,35,0.3);
+    border-radius:14px; padding:28px; width:min(360px,100%);
+    box-shadow:0 20px 60px rgba(0,0,0,0.6);">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:3px;color:var(--accent);margin-bottom:18px;">🗓 Set Match Schedule</div>
+    <label style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px;">Date</label>
+    <input id="schedDateInput" type="text" placeholder="e.g. Feb 21" maxlength="30"
+      style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);color:var(--text);
+             font-family:'Barlow Condensed',sans-serif;font-size:0.95rem;padding:8px 12px;border-radius:6px;margin-bottom:14px;outline:none;" />
+    <label style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px;">Time <span style="font-size:0.7rem;opacity:0.6;">(optional)</span></label>
+    <input id="schedTimeInput" type="text" placeholder="e.g. 2:00 PM" maxlength="20"
+      style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);color:var(--text);
+             font-family:'Barlow Condensed',sans-serif;font-size:0.95rem;padding:8px 12px;border-radius:6px;margin-bottom:20px;outline:none;" />
+    <div style="display:flex;gap:10px;">
+      <button onclick="saveSchedule()" style="
+        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
+        background:rgba(245,166,35,0.15);border:1px solid var(--accent);color:var(--accent);
+        padding:9px;border-radius:6px;cursor:pointer;transition:all 0.15s;"
+        onmouseover="this.style.background='rgba(245,166,35,0.25)'"
+        onmouseout="this.style.background='rgba(245,166,35,0.15)'">Save</button>
+      <button onclick="clearSchedule()" style="
+        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
+        background:rgba(232,69,69,0.08);border:1px solid rgba(232,69,69,0.35);color:var(--red);
+        padding:9px;border-radius:6px;cursor:pointer;transition:all 0.15s;"
+        onmouseover="this.style.background='rgba(232,69,69,0.18)'"
+        onmouseout="this.style.background='rgba(232,69,69,0.08)'">Remove</button>
+      <button onclick="closeScheduleModal()" style="
+        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
+        background:var(--card);border:1px solid var(--border);color:var(--muted);
+        padding:9px;border-radius:6px;cursor:pointer;">Cancel</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
