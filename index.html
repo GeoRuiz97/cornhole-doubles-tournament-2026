@@ -3215,13 +3215,20 @@ function initApp(firestoreData) {
   }
 }
 
-// Wait for Firebase to be ready, then load state
+// Wait for Firebase to be ready, then load state + schedules before first render
+async function bootstrap() {
+  const [firestoreData, scheds] = await Promise.all([
+    window._fbGet(),
+    window._fbGetSchedules ? window._fbGetSchedules() : Promise.resolve({})
+  ]);
+  matchSchedules = scheds || {};
+  initApp(firestoreData);
+}
+
 if (window._fbReady) {
-  window._fbGet().then(initApp);
+  bootstrap();
 } else {
-  document.addEventListener('fbReady', () => {
-    window._fbGet().then(initApp);
-  });
+  document.addEventListener('fbReady', () => bootstrap());
 }
 </script>
 <div id="exportPrintArea" style="display:none;"></div>
