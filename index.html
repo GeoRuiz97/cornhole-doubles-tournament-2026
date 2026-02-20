@@ -1000,6 +1000,36 @@ document.dispatchEvent(new Event('fbReady'));
   }
   .pred-msg.success { color: var(--green); }
   .pred-msg.error   { color: var(--red); }
+  /* View-mode read-only overlay */
+  #rrViewOverlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    z-index: 10;
+    cursor: not-allowed;
+    border-radius: 8px;
+  }
+  #rrViewOverlay.active { display: block; }
+  .rr-picker-wrap { position: relative; }
+  /* Edit picks button */
+  #editPicksBtn {
+    display: none;
+    width: 100%;
+    margin-top: 10px;
+    padding: 10px;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.88rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    background: rgba(245,166,35,0.1);
+    border: 1px solid rgba(245,166,35,0.5);
+    color: var(--accent);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  #editPicksBtn:hover { background: rgba(245,166,35,0.2); border-color: var(--accent); }
+  #editPicksBtn.visible { display: block; }
 
   /* ── Clear downstream user picks when a pick changes ── */
 function clearDownstreamPicks(changedMatchId) {
@@ -1333,14 +1363,18 @@ function clearDownstreamPicks(changedMatchId) {
       <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;letter-spacing:1px;color:var(--muted);width:100%;text-transform:uppercase;">Points per correct pick:</span>
     </div>
     <!-- Round-by-round picker (always shown) -->
-    <div class="rr-progress" id="rrProgress"></div>
-    <div class="rr-round-label" id="rrRoundLabel"></div>
-    <div class="rr-round-sub"  id="rrRoundSub"></div>
-    <div class="rr-matches"    id="rrMatches"></div>
-    <div class="rr-nav">
-      <button class="rr-nav-btn prev" id="rrPrevBtn" onclick="rrNav(-1)">← Back</button>
-      <button class="rr-nav-btn next" id="rrNextBtn" onclick="rrNav(1)">Next →</button>
+    <div class="rr-picker-wrap">
+      <div id="rrViewOverlay"></div>
+      <div class="rr-progress" id="rrProgress"></div>
+      <div class="rr-round-label" id="rrRoundLabel"></div>
+      <div class="rr-round-sub"  id="rrRoundSub"></div>
+      <div class="rr-matches"    id="rrMatches"></div>
+      <div class="rr-nav">
+        <button class="rr-nav-btn prev" id="rrPrevBtn" onclick="rrNav(-1)">← Back</button>
+        <button class="rr-nav-btn next" id="rrNextBtn" onclick="rrNav(1)">Next →</button>
+      </div>
     </div>
+    <button id="editPicksBtn" onclick="enableEditMode()">✏️ Edit My Picks</button>
     <button class="pred-btn" id="predSubmitBtn" onclick="submitPrediction()" style="margin-top:14px;">Submit Bracket</button>
     <div class="pred-msg" id="predMsg"></div>
   </div>
@@ -2199,7 +2233,13 @@ function togglePanel(id) {
   const isOpen = panel.classList.contains('open');
   // Close all panels first
   document.querySelectorAll('.slide-panel').forEach(p => p.classList.remove('open'));
-  if (!isOpen) panel.classList.add('open');
+  if (!isOpen) {
+    panel.classList.add('open');
+    // If opening pick panel fresh without a loaded pick, ensure edit mode is active
+    if (id === 'pickPanel' && !isEditMode && !myDocId) {
+      setViewMode(false);
+    }
+  }
 }
 function closePanel(id) {
   document.getElementById(id).classList.remove('open');
@@ -2212,6 +2252,7 @@ let rrRound    = 0;    // current round index in round-by-round picker
 let allPreds   = [];
 let myDocId    = null; // Firestore doc ID for current user's prediction
 let isEditMode = false;
+let isViewMode = false; // true when viewing existing picks read-only (before clicking Edit)
 
 const RNAMES      = ['Round 1','Round 2','Quarterfinals','Semifinals','Championship'];
 const ROUND_PTS   = [1, 2, 4, 8, 16]; // points per correct pick per round
@@ -2471,6 +2512,29 @@ function rrNav(dir) {
   renderRRRound();
 }
 
+function setViewMode(on) {
+  isViewMode = on;
+  const overlay  = document.getElementById('rrViewOverlay');
+  const editBtn  = document.getElementById('editPicksBtn');
+  const submitBtn = document.getElementById('predSubmitBtn');
+  const prevBtn  = document.getElementById('rrPrevBtn');
+  const nextBtn  = document.getElementById('rrNextBtn');
+  if (overlay)   overlay.classList.toggle('active', on);
+  if (editBtn)   editBtn.classList.toggle('visible', on);
+  if (submitBtn) submitBtn.style.display = on ? 'none' : '';
+  // In view mode, nav buttons still work so user can browse rounds
+  if (prevBtn)   prevBtn.disabled = false;
+  if (nextBtn)   nextBtn.disabled = false;
+}
+
+function enableEditMode() {
+  setViewMode(false);
+  const msgEl = document.getElementById('predMsg');
+  msgEl.className = 'pred-msg';
+  msgEl.innerHTML = '✏️ You can now edit your picks. Click <strong>Update Bracket</strong> when done.';
+  document.getElementById('predSubmitBtn').textContent = 'Update Bracket';
+}
+
 function setLookupMsg(text, type) {
   const el = document.getElementById('lookupMsg');
   if (!el) return;
@@ -2506,7 +2570,11 @@ async function lookupExistingPick() {
       msgEl.innerHTML = locked > 0
         ? `<span style="color:var(--accent)">✎ ${locked} match${locked>1?'es':''} already locked.</span>`
         : '';
-      document.getElementById('predSubmitBtn').textContent = 'Update Pick';
+      setViewMode(true);
+      msgEl.className = 'pred-msg success';
+      msgEl.innerHTML = locked > 0
+        ? `✅ Your bracket is saved! <span style="color:var(--muted);font-size:0.75rem;">${locked} match${locked>1?'es':''} locked. Click <strong style="color:var(--accent);">Edit My Picks</strong> to make changes.</span>`
+        : `✅ Your bracket is saved! Click <strong style="color:var(--accent);">Edit My Picks</strong> below to make changes.`;
       return;
     }
   }
@@ -2534,7 +2602,7 @@ function countLockedPicks(existingPicks) {
   return Object.entries(existingPicks.matchPicks || {}).filter(([mid]) => isMatchLocked(mid)).length;
 }
 
-// Load an existing prediction into the form for editing
+// Load an existing prediction into the form — read-only view first
 async function loadExistingPick(name) {
   if (!window._fbGetPrediction) return;
   const existing = await window._fbGetPrediction(name);
@@ -2551,17 +2619,15 @@ async function loadExistingPick(name) {
     renderRRRound();
   }
 
-  // Show edit notice
+  // Enter view-only mode — user must click Edit to make changes
+  setViewMode(true);
+
   const locked = countLockedPicks(picks);
   const msgEl  = document.getElementById('predMsg');
-  if (locked > 0) {
-    msgEl.className = 'pred-msg';
-    msgEl.innerHTML = `<span style="color:var(--accent)">✎ Editing your pick — ${locked} match${locked>1?'es':''} are locked and can no longer be changed.</span>`;
-  } else {
-    msgEl.className = 'pred-msg success';
-    msgEl.textContent = '✎ Editing your existing pick.';
-  }
-  document.getElementById('predSubmitBtn').textContent = 'Update Pick';
+  msgEl.className = 'pred-msg success';
+  msgEl.innerHTML = locked > 0
+    ? `✅ Your bracket is saved! <span style="color:var(--muted);font-size:0.75rem;">${locked} match${locked>1?'es':''} already locked. Click <strong style="color:var(--accent);">Edit My Picks</strong> to make changes.</span>`
+    : `✅ Your bracket is saved! Click <strong style="color:var(--accent);">Edit My Picks</strong> below if you'd like to make changes.`;
 }
 
 async function submitPrediction() {
