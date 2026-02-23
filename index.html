@@ -2220,6 +2220,10 @@ function clickSlot(matchId, slot) {
     savePicks();
     render();
 
+    //FIXED BUG me02232026: Save latest winner through clickSlot function instead of the getLatestWin function and immediately show popup
+    _winPopupShown = false;
+    showWinPopup(m);
+
     // Fire confetti from the winning slot after DOM updates
     requestAnimationFrame(() => {
       const card = document.querySelector(`[data-id="${matchId}"]`);
@@ -3141,11 +3145,28 @@ async function generateWinMessage(winner, loser, roundName) {
   }
 }
 
-async function showWinPopup() {
+//me02232026 FIXED BUG: added 'currentMatch' parameter triggered in clickSlot() to get the latest match info
+//latestWin() is now deprecated but left in place to avoid breaking the latest update as of 02232026
+async function showWinPopup(currentMatch = null) {
+  //check if popup already shown
   if (_winPopupShown) return;
-  const latest = getLatestWin();
-  if (!latest) return;
 
+  // 2. Get data: Use the clicked match if provided, otherwise search
+  let latest;
+  if (currentMatch) {
+    const loser = currentMatch.winner.id === currentMatch.top.id ? currentMatch.bottom : currentMatch.top;
+    // We find the round name based on where this match lives in ST.rounds
+    const roundIdx = ST.rounds.findIndex(r => r.some(m => m.id === currentMatch.id));
+    latest = { 
+      winner: currentMatch.winner, 
+      loser, 
+      roundName: RNAMES[roundIdx] || `Round ${roundIdx + 1}` 
+    };
+  } else {
+    latest = getLatestWin();
+  }
+
+  if (!latest) return;
   _winPopupShown = true;
 
   const { winner, loser, roundName } = latest;
