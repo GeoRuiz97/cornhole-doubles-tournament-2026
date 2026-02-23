@@ -3168,8 +3168,7 @@ async function showWinPopup(currentMatch = null) {
     const savedMatch = findMatch(lastWinner);
     if (savedMatch && savedMatch.winner) {
       latest = formatMatchForPopup(savedMatch);
-  }
-
+  }}
   if (!latest) return;
   _winPopupShown = true;
 
