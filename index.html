@@ -1223,25 +1223,6 @@ document.dispatchEvent(new Event('fbReady'));
   }
   #rrViewOverlay.active { display: block; }
   .rr-picker-wrap { position: relative; }
-  /* Edit picks button */
-  #editPicksBtn {
-    display: none;
-    width: 100%;
-    margin-top: 10px;
-    padding: 10px;
-    font-family: 'Barlow Condensed', sans-serif;
-    font-size: 0.88rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    background: rgba(245,166,35,0.1);
-    border: 1px solid rgba(245,166,35,0.5);
-    color: var(--accent);
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  #editPicksBtn:hover { background: rgba(245,166,35,0.2); border-color: var(--accent); }
-  #editPicksBtn.visible { display: block; }
 /* ── Round-by-round picker ── */
   .rr-progress {
     display: flex;
@@ -1575,7 +1556,6 @@ document.dispatchEvent(new Event('fbReady'));
         <button class="rr-nav-btn next" id="rrNextBtn" onclick="rrNav(1)">Next →</button>
       </div>
     </div>
-    <button id="editPicksBtn" onclick="enableEditMode()">✏️ Edit My Picks</button>
     <button class="pred-btn" id="predSubmitBtn" onclick="submitPrediction()" style="margin-top:14px;">Submit Bracket</button>
     <div class="pred-msg" id="predMsg"></div>
   </div>
@@ -2847,25 +2827,14 @@ function rrNav(dir) {
 
 function setViewMode(on) {
   isViewMode = on;
-  const overlay  = document.getElementById('rrViewOverlay');
-  const editBtn  = document.getElementById('editPicksBtn');
+  const overlay   = document.getElementById('rrViewOverlay');
   const submitBtn = document.getElementById('predSubmitBtn');
-  const prevBtn  = document.getElementById('rrPrevBtn');
-  const nextBtn  = document.getElementById('rrNextBtn');
+  const prevBtn   = document.getElementById('rrPrevBtn');
+  const nextBtn   = document.getElementById('rrNextBtn');
   if (overlay)   overlay.classList.toggle('active', on);
-  if (editBtn)   editBtn.classList.toggle('visible', on);
   if (submitBtn) submitBtn.style.display = on ? 'none' : '';
-  // In view mode, nav buttons still work so user can browse rounds
   if (prevBtn)   prevBtn.disabled = false;
   if (nextBtn)   nextBtn.disabled = false;
-}
-
-function enableEditMode() {
-  setViewMode(false);
-  const msgEl = document.getElementById('predMsg');
-  msgEl.className = 'pred-msg';
-  msgEl.innerHTML = '✏️ You can now edit your picks. Click <strong>Update Bracket</strong> when done.';
-  document.getElementById('predSubmitBtn').textContent = 'Update Bracket';
 }
 
 function setLookupMsg(text, type) {
@@ -2906,8 +2875,8 @@ async function lookupExistingPick() {
       setViewMode(true);
       msgEl.className = 'pred-msg success';
       msgEl.innerHTML = locked > 0
-        ? `✅ Your bracket is saved! <span style="color:var(--muted);font-size:0.75rem;">${locked} match${locked>1?'es':''} locked. Click <strong style="color:var(--accent);">Edit My Picks</strong> to make changes.</span>`
-        : `✅ Your bracket is saved! Click <strong style="color:var(--accent);">Edit My Picks</strong> below to make changes.`;
+        ? `✅ Your bracket is saved! <span style="color:var(--muted);font-size:0.75rem;">${locked} match${locked>1?'es':''} already locked.</span>`
+        : `✅ Your bracket is saved! Picks are locked — no changes allowed.`;
       return;
     }
   }
@@ -2958,9 +2927,7 @@ async function loadExistingPick(name) {
   const locked = countLockedPicks(picks);
   const msgEl  = document.getElementById('predMsg');
   msgEl.className = 'pred-msg success';
-  msgEl.innerHTML = locked > 0
-    ? `✅ Your bracket is saved! <span style="color:var(--muted);font-size:0.75rem;">${locked} match${locked>1?'es':''} already locked. Click <strong style="color:var(--accent);">Edit My Picks</strong> to make changes.</span>`
-    : `✅ Your bracket is saved! Click <strong style="color:var(--accent);">Edit My Picks</strong> below if you'd like to make changes.`;
+  msgEl.innerHTML = `✅ Your bracket is saved! Picks are locked — no changes allowed.`;
 }
 
 async function submitPrediction() {
@@ -3005,46 +2972,27 @@ async function submitPrediction() {
     return;
   }
 
-  // Block duplicate submissions — must Look Up first to edit
-  if (!isEditMode) {
-    msgEl.textContent = 'Checking for existing pick...';
-    const existing = await window._fbGetPrediction?.(name)
-      || allPreds.find(p => p.name?.trim().toLowerCase() === name.toLowerCase())
-      || null;
-    if (existing) {
-      msgEl.className = 'pred-msg error';
-      msgEl.innerHTML = `You already have a pick under <strong>${name}</strong>. Click <strong>Look Up</strong> to load and edit it.`;
-      return;
-    }
+  // Block all re-submissions — picks are locked after first submit
+  msgEl.textContent = 'Checking for existing pick...';
+  const existing = await window._fbGetPrediction?.(name)
+    || allPreds.find(p => p.name?.trim().toLowerCase() === name.toLowerCase())
+    || null;
+  if (existing) {
+    msgEl.className = 'pred-msg error';
+    msgEl.innerHTML = `You already submitted a bracket under <strong>${name}</strong>. Picks are locked after submission.`;
+    return;
   }
 
-  // Merge: preserve locked picks from existing submission
-  let finalMatchPicks = { ...fullPicks };
-  if (isEditMode && myDocId) {
-    const existing = await window._fbGetPrediction?.(name);
-    if (existing?.picks?.matchPicks) {
-      Object.entries(existing.picks.matchPicks).forEach(([mid, wid]) => {
-        if (isMatchLocked(mid)) finalMatchPicks[mid] = wid;
-      });
-    }
-  }
-
-  const picks = { type: 'full', matchPicks: finalMatchPicks };
-  const wasEditing = isEditMode;
+  // const picks = { type: 'full', matchPicks: { ...fullPicks } };
   msgEl.textContent = 'Saving...';
-  const savedId = await window._fbSavePrediction(name, picks, myDocId);
+  const savedId = await window._fbSavePrediction(name, picks, null);
   if (savedId) {
     myDocId    = savedId;
     isEditMode = true;
-    // Keep fullPicks and rrRound intact so user can see their selections
-    // Just re-render so correct/wrong badges update if any matches are locked
     renderRRRound();
-    document.getElementById('predSubmitBtn').textContent = 'Update Bracket';
-    // Show a persistent helpful message below the button
+    document.getElementById('predSubmitBtn').style.display = 'none';
     msgEl.className = 'pred-msg success';
-    msgEl.innerHTML = wasEditing
-      ? '✅ Bracket updated! Your picks are saved.<br><span style="color:var(--muted);font-size:0.75rem;">To make more changes, just edit above and click Update Bracket again.</span>'
-      : '✅ Bracket recorded! You\'re all set.<br><span style="color:var(--muted);font-size:0.75rem;">Need to make changes? Type your name and click <strong>Look Up</strong>, then edit your picks.</span>';
+    msgEl.innerHTML = '✅ Bracket recorded! Your picks are locked in — good luck! 🎯';
   } else {
     msgEl.className = 'pred-msg error';
     msgEl.textContent = 'Error saving. Try again.';
