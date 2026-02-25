@@ -1570,7 +1570,7 @@ document.dispatchEvent(new Event('fbReady'));
     <button class="panel-close" onclick="closePanel('activityPanel')">✕</button>
   </div>
   <div class="panel-body">
-    <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">All bracket submissions · newest first</div>
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">All bracket submissions · newest first · click a row to expand</div>
     <div id="activityLog">
       <div class="lb-empty">No submissions yet</div>
     </div>
@@ -3431,53 +3431,177 @@ function renderActivityLog(preds) {
     return;
   }
 
-  // Sort newest first
-  const sorted = [...preds].sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
-
+  const sorted   = [...preds].sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
   const now      = new Date();
   const todayStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
+  // Build a lookup: teamId → team object
+  const teamById = {};
+  TEAMS.forEach(t => { teamById[t.id] = t; });
+
+  // Build a lookup: matchId → { match, roundIndex, matchIndex }
+  const matchInfo = {};
+  if (ST) {
+    ST.rounds.forEach((round, ri) => {
+      round.forEach((m, mi) => {
+        matchInfo[m.id] = { match: m, ri, mi };
+      });
+    });
+  }
+
+  const RSHORT = ['R1', 'R2', 'QF', 'SF', 'Final'];
+
   el.innerHTML = '';
 
-  sorted.forEach(pred => {
-    const ts   = pred.submittedAt ? new Date(pred.submittedAt) : null;
-    const dateStr = ts
-      ? ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
-      : null;
-    const timeStr = ts
-      ? ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-      : 'Unknown time';
+  sorted.forEach((pred, predIdx) => {
+    const ts      = pred.submittedAt ? new Date(pred.submittedAt) : null;
+    const dateStr = ts ? ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
+    const timeStr = ts ? ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'Unknown time';
     const isToday = dateStr === todayStr;
+    const picks   = pred.picks?.matchPicks || {};
 
-    const row = document.createElement('div');
-    row.style.cssText = `
-      display:flex; align-items:center; gap:10px;
-      padding:9px 12px;
-      border-radius:7px;
-      margin-bottom:6px;
-      background:${isToday ? 'rgba(245,166,35,0.07)' : 'var(--card)'};
-      border:1px solid ${isToday ? 'rgba(245,166,35,0.28)' : 'var(--border)'};
+    // Score summary
+    const scored = ST ? (() => {
+      const s = scorePrediction(pred);
+      return { total: s.total, max: s.maxPossible };
+    })() : null;
+
+    // Build per-round pick rows
+    const roundSections = [];
+    if (ST) {
+      ST.rounds.forEach((round, ri) => {
+        const rows = [];
+        round.forEach((m, mi) => {
+          const pickedId = picks[m.id];
+          if (!pickedId) return; // no pick for this match (bye or locked auto-fill only)
+          const pickedTeam  = teamById[pickedId];
+          const pickedLabel = pickedTeam ? `${pickedTeam.label}: ${pickedTeam.p1} & ${pickedTeam.p2}` : pickedId;
+
+          // Determine top/bottom opponents for context
+          const topTeam = m.top && m.top !== 'BYE' ? m.top : null;
+          const botTeam = m.bottom && m.bottom !== 'BYE' ? m.bottom : null;
+          const opponent = topTeam && botTeam
+            ? (topTeam.id === pickedId ? botTeam : topTeam)
+            : null;
+          const opponentLabel = opponent ? `${opponent.label}: ${opponent.p1} & ${opponent.p2}` : null;
+
+          // Result status
+          const realWinner = m.winner && m.winner !== 'BYE' ? m.winner : null;
+          let status, statusColor, statusIcon;
+          if (!realWinner) {
+            status = 'Pending'; statusColor = '#7a8499'; statusIcon = '⏳';
+          } else if (realWinner.id === pickedId) {
+            status = 'Correct'; statusColor = '#2ecc71'; statusIcon = '✓';
+          } else {
+            status = 'Wrong'; statusColor = '#e84545'; statusIcon = '✗';
+          }
+
+          const pts = ROUND_PTS[ri] || Math.pow(2, ri);
+          const ptsEarned = realWinner && realWinner.id === pickedId ? `+${pts}pt` : (realWinner ? '0pt' : '');
+
+          rows.push({ mi, pickedLabel, opponentLabel, status, statusColor, statusIcon, ptsEarned });
+        });
+        if (rows.length > 0) {
+          roundSections.push({ ri, rows });
+        }
+      });
+    }
+
+    // Build the card
+    const card = document.createElement('div');
+    const cardId = `alog-${predIdx}`;
+    card.style.cssText = `
+      border-radius:8px; margin-bottom:8px;
+      border:1px solid ${isToday ? 'rgba(245,166,35,0.35)' : 'var(--border)'};
+      overflow:hidden;
     `;
 
     const todayBadge = isToday
-      ? `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;letter-spacing:1px;text-transform:uppercase;background:rgba(245,166,35,0.18);border:1px solid rgba(245,166,35,0.4);color:var(--accent);border-radius:4px;padding:2px 6px;flex-shrink:0;">Today</span>`
+      ? `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.6rem;letter-spacing:1px;text-transform:uppercase;background:rgba(245,166,35,0.18);border:1px solid rgba(245,166,35,0.4);color:var(--accent);border-radius:4px;padding:2px 6px;white-space:nowrap;">Today</span>`
+      : '';
+    const scoreTag = scored
+      ? `<span style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;color:#2ecc71;white-space:nowrap;">${scored.total}pt</span>`
       : '';
 
-    const picks = pred.picks?.matchPicks || {};
-    const pickCount = Object.keys(picks).length;
-
-    row.innerHTML = `
+    // Header row — clickable to expand/collapse
+    const header = document.createElement('div');
+    header.style.cssText = `
+      display:flex; align-items:center; gap:10px;
+      padding:10px 13px;
+      background:${isToday ? 'rgba(245,166,35,0.06)' : 'var(--card)'};
+      cursor:pointer; user-select:none;
+    `;
+    header.innerHTML = `
       <div style="flex:1;min-width:0;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:0.95rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           ${pred.name || '(unnamed)'}
         </div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;color:var(--muted);margin-top:2px;letter-spacing:0.3px;">
-          ${dateStr ? `${dateStr} · ${timeStr}` : 'No timestamp'} &nbsp;·&nbsp; ${pickCount} pick${pickCount !== 1 ? 's' : ''}
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;color:var(--muted);margin-top:1px;letter-spacing:0.3px;">
+          ${dateStr ? `${dateStr} · ${timeStr}` : 'No timestamp'} &nbsp;·&nbsp; ${Object.keys(picks).length} picks
         </div>
       </div>
+      ${scoreTag}
       ${todayBadge}
+      <span class="alog-chevron" style="color:var(--muted);font-size:0.75rem;transition:transform 0.2s;flex-shrink:0;">▼</span>
     `;
-    el.appendChild(row);
+
+    // Body — starts collapsed
+    const body = document.createElement('div');
+    body.style.cssText = 'display:none; background:#0e1117; padding:10px 13px 12px;';
+
+    if (roundSections.length === 0) {
+      body.innerHTML = `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;color:var(--muted);font-style:italic;">No picks recorded.</div>`;
+    } else {
+      roundSections.forEach(({ ri, rows }) => {
+        const section = document.createElement('div');
+        section.style.cssText = 'margin-bottom:10px;';
+
+        const rLabel = document.createElement('div');
+        rLabel.style.cssText = `font-family:'Bebas Neue',sans-serif;font-size:0.8rem;letter-spacing:2px;color:var(--accent);margin-bottom:5px;`;
+        rLabel.textContent = ROUND_NAMES[ri] || `Round ${ri+1}`;
+        section.appendChild(rLabel);
+
+        rows.forEach(row => {
+          const pickRow = document.createElement('div');
+          pickRow.style.cssText = `
+            display:grid; grid-template-columns:1fr auto;
+            align-items:start; gap:6px;
+            padding:5px 8px; border-radius:5px; margin-bottom:3px;
+            background:var(--surface);
+          `;
+          const vsLine = row.opponentLabel
+            ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;color:var(--muted);margin-top:1px;">vs ${row.opponentLabel}</div>`
+            : '';
+          pickRow.innerHTML = `
+            <div>
+              <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.82rem;color:var(--text);font-weight:600;">
+                Game ${row.mi + 1} → ${row.pickedLabel}
+              </div>
+              ${vsLine}
+            </div>
+            <div style="text-align:right;flex-shrink:0;">
+              <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;color:${row.statusColor};font-weight:600;white-space:nowrap;">${row.statusIcon} ${row.status}</div>
+              ${row.ptsEarned ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;color:var(--muted);">${row.ptsEarned}</div>` : ''}
+            </div>
+          `;
+          section.appendChild(pickRow);
+        });
+
+        body.appendChild(section);
+      });
+    }
+
+    // Toggle expand/collapse
+    header.addEventListener('click', () => {
+      const isOpen = body.style.display !== 'none';
+      body.style.display = isOpen ? 'none' : 'block';
+      const chev = header.querySelector('.alog-chevron');
+      if (chev) chev.style.transform = isOpen ? '' : 'rotate(180deg)';
+    });
+
+    card.appendChild(header);
+    card.appendChild(body);
+    el.appendChild(card);
   });
 }
 
@@ -3516,6 +3640,7 @@ function initApp(firestoreData) {
       if (!isUnlocked) document.getElementById('bracket').classList.add('bracket-locked');
       // Re-score leaderboard with updated bracket state
       updateLeaderboard(allPreds);
+      renderActivityLog(allPreds);
       renderRRRound();
 
       // Show champion overlay for all viewers when champ is set (once per session)
