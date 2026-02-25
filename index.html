@@ -8,7 +8,7 @@
 <!-- Firebase SDKs -->
 <script type="module">
 import { initializeApp }                        from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot, getDoc, deleteDoc }
+import { getFirestore, doc, setDoc, onSnapshot, getDoc, deleteDoc, addDoc, collection as fbCollection, query, orderBy }
                                                 from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
                                                 from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -61,10 +61,28 @@ const PREDS_COL = 'predictions';
 
 window._fbSavePrediction = async function(name, picks, existingDocId) {
   try {
-    // Use a stable doc ID based on name so updates overwrite the same document
     const docId = existingDocId || name.trim().toLowerCase().replace(/[^a-z0-9]/g,'_');
-    const ref = doc(db, PREDS_COL, docId);
-    await setDoc(ref, { name: name.trim(), picks, submittedAt: Date.now(), docId });
+    const ref   = doc(db, PREDS_COL, docId);
+    const now   = Date.now();
+
+    // Read current state before overwriting (for audit trail)
+    const existing = await getDoc(ref);
+    const oldData  = existing.exists() ? existing.data() : null;
+
+    // Write the prediction
+    await setDoc(ref, { name: name.trim(), picks, submittedAt: now, docId });
+
+    // Write an audit log entry — always, even for first submission
+    const auditEntry = {
+      predDocId:   docId,
+      name:        name.trim(),
+      changedAt:   now,
+      oldPicks:    oldData ? (oldData.picks?.matchPicks || {}) : null,
+      newPicks:    picks?.matchPicks || {},
+      isFirstSubmit: !oldData,
+    };
+    await addDoc(fbCollection(db, 'audit_log'), auditEntry);
+
     return docId;
   } catch(e) { console.error('Prediction save error:', e); return null; }
 };
@@ -98,6 +116,16 @@ window._fbListenPredictions = function(callback) {
 // Store imports for use in predictions
 import { collection, onSnapshot as onSnap2 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 window._fbImports = { collection, onSnapshot: onSnap2 };
+
+// ── Audit log collection ──
+window._fbListenAuditLog = function(callback) {
+  const q = query(fbCollection(db, 'audit_log'), orderBy('changedAt', 'desc'));
+  onSnapshot(q, snap => {
+    const entries = [];
+    snap.forEach(d => entries.push({ id: d.id, ...d.data() }));
+    callback(entries);
+  });
+};
 
 // ── Match Schedules ──
 const SCHED_DOC = doc(db, 'bracket', 'schedules');
@@ -2567,6 +2595,7 @@ let fullPicks      = {};   // matchId → teamId
 let matchSchedules = {}; // matchId → { date, time } strings
 let rrRound    = 0;    // current round index in round-by-round picker
 let allPreds   = [];
+let auditLogs  = []; // all audit_log entries, newest first
 let myDocId    = null; // Firestore doc ID for current user's prediction
 let isEditMode = false;
 
@@ -2844,22 +2873,22 @@ async function submitPrediction() {
 
   if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Please enter your name.'; return; }
 
-  // Auto-fill any locked matches with the real bracket winner
-  // so late joiners are never blocked by already-played games
+  // Track which matches are already locked (auto-filled) vs user-chosen
+  const autoFilledIds = new Set();
   ST.rounds.forEach((round, ri) => {
     round.forEach(m => {
       if (isMatchLocked(m.id) && !fullPicks[m.id]) {
         fullPicks[m.id] = m.winner.id;
+        autoFilledIds.add(m.id);
       }
     });
   });
 
   // Require picks for all remaining unlocked non-bye matches
-  // Use getPredContestants so later rounds resolve from user picks, not real bracket
   const missingPicks = [];
   ST.rounds.forEach((round, ri) => {
     round.forEach(m => {
-      if (isMatchLocked(m.id)) return; // already auto-filled above
+      if (isMatchLocked(m.id)) return;
       const [t, b] = getPredContestants(m, ri);
       const topReal = t && t !== 'BYE' && t.id;
       const botReal = b && b !== 'BYE' && b.id;
@@ -2889,7 +2918,14 @@ async function submitPrediction() {
     return;
   }
 
-  const picks = { type: 'full', matchPicks: { ...fullPicks } };
+  // Store user picks separately from auto-filled ones
+  const userPickIds = new Set(Object.keys(fullPicks).filter(mid => !autoFilledIds.has(mid)));
+  const picks = {
+    type:        'full',
+    matchPicks:  { ...fullPicks },
+    userPickIds: [...userPickIds],   // which picks the user actually made
+    autoFillIds: [...autoFilledIds], // which were auto-filled from locked matches
+  };
   msgEl.textContent = 'Saving...';
   const savedId = await window._fbSavePrediction(name, picks, null);
   if (savedId) {
@@ -3423,6 +3459,37 @@ function saveEditMatch() {
 
 
 /* ─── ACTIVITY LOG ──────────────────────────────────────────── */
+
+// Build a human-readable label for a team from its ID
+function teamPickLabel(teamId) {
+  if (!teamId) return '(none)';
+  const t = TEAMS.find(t => t.id === teamId);
+  return t ? `${t.label} (${t.p1} & ${t.p2})` : teamId;
+}
+
+// Diff two matchPick objects → array of { matchId, roundIndex, matchIndex, before, after }
+function diffPicks(oldPicks, newPicks) {
+  const allKeys = new Set([...Object.keys(oldPicks || {}), ...Object.keys(newPicks || {})]);
+  const changes = [];
+  allKeys.forEach(mid => {
+    const before = (oldPicks || {})[mid] || null;
+    const after  = (newPicks || {})[mid] || null;
+    if (before !== after) changes.push({ mid, before, after });
+  });
+  // Enrich with round/match index from ST
+  changes.forEach(c => {
+    if (!ST) return;
+    ST.rounds.forEach((round, ri) => {
+      round.forEach((m, mi) => {
+        if (m.id === c.mid) { c.ri = ri; c.mi = mi; }
+      });
+    });
+  });
+  // Sort by round then match
+  changes.sort((a, b) => (a.ri ?? 99) - (b.ri ?? 99) || (a.mi ?? 99) - (b.mi ?? 99));
+  return changes;
+}
+
 function renderActivityLog(preds) {
   const el = document.getElementById('activityLog');
   if (!el) return;
@@ -3431,172 +3498,229 @@ function renderActivityLog(preds) {
     return;
   }
 
-  const sorted   = [...preds].sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
   const now      = new Date();
   const todayStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 
-  // Build a lookup: teamId → team object
-  const teamById = {};
-  TEAMS.forEach(t => { teamById[t.id] = t; });
+  // Index audit entries by predDocId, sorted newest first
+  const auditByDoc = {};
+  auditLogs.forEach(entry => {
+    if (!auditByDoc[entry.predDocId]) auditByDoc[entry.predDocId] = [];
+    auditByDoc[entry.predDocId].push(entry);
+  });
 
-  // Build a lookup: matchId → { match, roundIndex, matchIndex }
-  const matchInfo = {};
-  if (ST) {
-    ST.rounds.forEach((round, ri) => {
-      round.forEach((m, mi) => {
-        matchInfo[m.id] = { match: m, ri, mi };
-      });
-    });
-  }
-
-  const RSHORT = ['R1', 'R2', 'QF', 'SF', 'Final'];
+  // Sort preds: tampered first (most suspicious), then by submittedAt desc
+  const sorted = [...preds].sort((a, b) => {
+    const aDocId = (a.docId || a.id);
+    const bDocId = (b.docId || b.id);
+    const aTampered = (auditByDoc[aDocId] || []).some(e => !e.isFirstSubmit);
+    const bTampered = (auditByDoc[bDocId] || []).some(e => !e.isFirstSubmit);
+    if (aTampered !== bTampered) return aTampered ? -1 : 1;
+    return (b.submittedAt || 0) - (a.submittedAt || 0);
+  });
 
   el.innerHTML = '';
 
   sorted.forEach((pred, predIdx) => {
+    const docId   = pred.docId || pred.id;
+    const entries = auditByDoc[docId] || [];
+    // All audit entries after the first submission = tamper evidence
+    const tamperedEntries = entries.filter(e => !e.isFirstSubmit);
+    const isTampered = tamperedEntries.length > 0;
+    // First submission entry (for original picks)
+    const firstEntry = entries.find(e => e.isFirstSubmit) || null;
+
     const ts      = pred.submittedAt ? new Date(pred.submittedAt) : null;
     const dateStr = ts ? ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : null;
     const timeStr = ts ? ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : 'Unknown time';
     const isToday = dateStr === todayStr;
-    const picks   = pred.picks?.matchPicks || {};
+    const scored  = ST ? scorePrediction(pred) : null;
 
-    // Score summary
-    const scored = ST ? (() => {
-      const s = scorePrediction(pred);
-      return { total: s.total, max: s.maxPossible };
-    })() : null;
-
-    // Build per-round pick rows
-    const roundSections = [];
-    if (ST) {
-      ST.rounds.forEach((round, ri) => {
-        const rows = [];
-        round.forEach((m, mi) => {
-          const pickedId = picks[m.id];
-          if (!pickedId) return; // no pick for this match (bye or locked auto-fill only)
-          const pickedTeam  = teamById[pickedId];
-          const pickedLabel = pickedTeam ? `${pickedTeam.label}: ${pickedTeam.p1} & ${pickedTeam.p2}` : pickedId;
-
-          // Determine top/bottom opponents for context
-          const topTeam = m.top && m.top !== 'BYE' ? m.top : null;
-          const botTeam = m.bottom && m.bottom !== 'BYE' ? m.bottom : null;
-          const opponent = topTeam && botTeam
-            ? (topTeam.id === pickedId ? botTeam : topTeam)
-            : null;
-          const opponentLabel = opponent ? `${opponent.label}: ${opponent.p1} & ${opponent.p2}` : null;
-
-          // Result status
-          const realWinner = m.winner && m.winner !== 'BYE' ? m.winner : null;
-          let status, statusColor, statusIcon;
-          if (!realWinner) {
-            status = 'Pending'; statusColor = '#7a8499'; statusIcon = '⏳';
-          } else if (realWinner.id === pickedId) {
-            status = 'Correct'; statusColor = '#2ecc71'; statusIcon = '✓';
-          } else {
-            status = 'Wrong'; statusColor = '#e84545'; statusIcon = '✗';
-          }
-
-          const pts = ROUND_PTS[ri] || Math.pow(2, ri);
-          const ptsEarned = realWinner && realWinner.id === pickedId ? `+${pts}pt` : (realWinner ? '0pt' : '');
-
-          rows.push({ mi, pickedLabel, opponentLabel, status, statusColor, statusIcon, ptsEarned });
-        });
-        if (rows.length > 0) {
-          roundSections.push({ ri, rows });
-        }
-      });
-    }
-
-    // Build the card
+    // ── Card wrapper ──
     const card = document.createElement('div');
-    const cardId = `alog-${predIdx}`;
     card.style.cssText = `
-      border-radius:8px; margin-bottom:8px;
-      border:1px solid ${isToday ? 'rgba(245,166,35,0.35)' : 'var(--border)'};
-      overflow:hidden;
+      border-radius:8px; margin-bottom:8px; overflow:hidden;
+      border:1px solid ${isTampered ? 'rgba(232,69,69,0.5)' : isToday ? 'rgba(245,166,35,0.35)' : 'var(--border)'};
     `;
 
-    const todayBadge = isToday
-      ? `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.6rem;letter-spacing:1px;text-transform:uppercase;background:rgba(245,166,35,0.18);border:1px solid rgba(245,166,35,0.4);color:var(--accent);border-radius:4px;padding:2px 6px;white-space:nowrap;">Today</span>`
+    // ── Header ──
+    const tamperedBadge = isTampered
+      ? `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.6rem;letter-spacing:1.5px;text-transform:uppercase;background:rgba(232,69,69,0.18);border:1px solid rgba(232,69,69,0.5);color:#e84545;border-radius:4px;padding:2px 7px;white-space:nowrap;flex-shrink:0;">⚠ Tampered</span>`
+      : suspiciousPickCount
+        ? `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.6rem;letter-spacing:1.5px;text-transform:uppercase;background:rgba(245,166,35,0.15);border:1px solid rgba(245,166,35,0.4);color:var(--accent);border-radius:4px;padding:2px 7px;white-space:nowrap;flex-shrink:0;">⚠ Suspicious</span>`
+        : '';
+    const todayBadge = (!isTampered && isToday)
+      ? `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.6rem;letter-spacing:1px;text-transform:uppercase;background:rgba(245,166,35,0.18);border:1px solid rgba(245,166,35,0.4);color:var(--accent);border-radius:4px;padding:2px 6px;white-space:nowrap;flex-shrink:0;">Today</span>`
       : '';
     const scoreTag = scored
-      ? `<span style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;color:#2ecc71;white-space:nowrap;">${scored.total}pt</span>`
+      ? `<span style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;color:#2ecc71;white-space:nowrap;flex-shrink:0;">${scored.total}pt</span>`
       : '';
 
-    // Header row — clickable to expand/collapse
+    // Warn if pick count looks suspicious:
+    // No userPickIds field = old submission format, can't tell; show neutral
+    // userPickIds present but contains matches that were locked at bracket time = possible tamper
+    const suspiciousPickCount = (() => {
+      const up = pred.picks?.userPickIds;
+      if (!up) return false; // old format, no data to judge
+      if (!ST) return false;
+      // Check if any userPickIds match a currently-locked match
+      // (meaning they submitted a "user pick" for a match that was already decided)
+      return up.some(mid => isMatchLocked(mid));
+    })();
+
     const header = document.createElement('div');
     header.style.cssText = `
-      display:flex; align-items:center; gap:10px;
-      padding:10px 13px;
-      background:${isToday ? 'rgba(245,166,35,0.06)' : 'var(--card)'};
-      cursor:pointer; user-select:none;
+      display:flex; align-items:center; gap:8px; padding:10px 13px; cursor:pointer; user-select:none;
+      background:${isTampered ? 'rgba(232,69,69,0.06)' : isToday ? 'rgba(245,166,35,0.06)' : 'var(--card)'};
     `;
     header.innerHTML = `
       <div style="flex:1;min-width:0;">
-        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:700;font-size:1rem;color:${isTampered ? '#e84545' : 'var(--text)'};white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
           ${pred.name || '(unnamed)'}
         </div>
-        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;color:var(--muted);margin-top:1px;letter-spacing:0.3px;">
-          ${dateStr ? `${dateStr} · ${timeStr}` : 'No timestamp'} &nbsp;·&nbsp; ${Object.keys(picks).length} picks
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;color:var(--muted);margin-top:1px;">
+          ${dateStr ? `${dateStr} · ${timeStr}` : 'No timestamp'}&nbsp;·&nbsp;${(() => {
+            const up = pred.picks?.userPickIds;
+            const total = Object.keys(pred.picks?.matchPicks || {}).length;
+            const userCount = up ? up.length : total;
+            const autoCount = total - userCount;
+            let txt = `${userCount} pick${userCount !== 1 ? 's' : ''}`;
+            if (autoCount > 0) txt += ` <span style="color:var(--muted);font-style:italic;">(+${autoCount} auto-filled)</span>`;
+            return txt;
+          })()}
+          ${isTampered ? ` · <span style="color:#e84545;">${tamperedEntries.length} tamper event${tamperedEntries.length > 1 ? 's' : ''}</span>` : ''}
         </div>
       </div>
-      ${scoreTag}
-      ${todayBadge}
+      ${scoreTag}${tamperedBadge}${todayBadge}
       <span class="alog-chevron" style="color:var(--muted);font-size:0.75rem;transition:transform 0.2s;flex-shrink:0;">▼</span>
     `;
 
-    // Body — starts collapsed
+    // ── Body ──
     const body = document.createElement('div');
     body.style.cssText = 'display:none; background:#0e1117; padding:10px 13px 12px;';
 
-    if (roundSections.length === 0) {
-      body.innerHTML = `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;color:var(--muted);font-style:italic;">No picks recorded.</div>`;
-    } else {
-      roundSections.forEach(({ ri, rows }) => {
-        const section = document.createElement('div');
-        section.style.cssText = 'margin-bottom:10px;';
+    // ── Section helper ──
+    function makeSection(title, titleColor, rows) {
+      const sec = document.createElement('div');
+      sec.style.marginBottom = '12px';
+      const lbl = document.createElement('div');
+      lbl.style.cssText = `font-family:'Bebas Neue',sans-serif;font-size:0.8rem;letter-spacing:2px;color:${titleColor};margin-bottom:5px;`;
+      lbl.textContent = title;
+      sec.appendChild(lbl);
+      rows.forEach(r => sec.appendChild(r));
+      return sec;
+    }
 
-        const rLabel = document.createElement('div');
-        rLabel.style.cssText = `font-family:'Bebas Neue',sans-serif;font-size:0.8rem;letter-spacing:2px;color:var(--accent);margin-bottom:5px;`;
-        rLabel.textContent = ROUND_NAMES[ri] || `Round ${ri+1}`;
-        section.appendChild(rLabel);
+    function makePickRow(gameLabel, pickedLabel, opponentLabel, status, statusColor, statusIcon, ptsEarned) {
+      const row = document.createElement('div');
+      row.style.cssText = `display:grid;grid-template-columns:1fr auto;align-items:start;gap:6px;padding:5px 8px;border-radius:5px;margin-bottom:3px;background:var(--surface);`;
+      const vsLine = opponentLabel ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;color:var(--muted);margin-top:1px;">vs ${opponentLabel}</div>` : '';
+      row.innerHTML = `
+        <div>
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.82rem;color:var(--text);font-weight:600;">${gameLabel} → ${pickedLabel}</div>
+          ${vsLine}
+        </div>
+        <div style="text-align:right;flex-shrink:0;">
+          <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;color:${statusColor};font-weight:600;white-space:nowrap;">${statusIcon} ${status}</div>
+          ${ptsEarned ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;color:var(--muted);">${ptsEarned}</div>` : ''}
+        </div>`;
+      return row;
+    }
 
-        rows.forEach(row => {
-          const pickRow = document.createElement('div');
-          pickRow.style.cssText = `
-            display:grid; grid-template-columns:1fr auto;
-            align-items:start; gap:6px;
-            padding:5px 8px; border-radius:5px; margin-bottom:3px;
-            background:var(--surface);
-          `;
-          const vsLine = row.opponentLabel
-            ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.68rem;color:var(--muted);margin-top:1px;">vs ${row.opponentLabel}</div>`
-            : '';
-          pickRow.innerHTML = `
-            <div>
-              <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.82rem;color:var(--text);font-weight:600;">
-                Game ${row.mi + 1} → ${row.pickedLabel}
-              </div>
-              ${vsLine}
-            </div>
-            <div style="text-align:right;flex-shrink:0;">
-              <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;color:${row.statusColor};font-weight:600;white-space:nowrap;">${row.statusIcon} ${row.status}</div>
-              ${row.ptsEarned ? `<div style="font-family:'Barlow Condensed',sans-serif;font-size:0.65rem;color:var(--muted);">${row.ptsEarned}</div>` : ''}
-            </div>
-          `;
-          section.appendChild(pickRow);
+    function makeDiffRow(gameLabel, beforeLabel, afterLabel) {
+      const row = document.createElement('div');
+      row.style.cssText = `padding:6px 8px;border-radius:5px;margin-bottom:3px;background:rgba(232,69,69,0.06);border:1px solid rgba(232,69,69,0.18);`;
+      row.innerHTML = `
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.8rem;font-weight:700;color:var(--muted);margin-bottom:4px;">${gameLabel}</div>
+        <div style="display:flex;align-items:flex-start;gap:6px;">
+          <div style="flex:1;background:rgba(232,69,69,0.12);border:1px solid rgba(232,69,69,0.3);border-radius:4px;padding:4px 7px;">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;letter-spacing:1px;text-transform:uppercase;color:#e84545;margin-bottom:2px;">Before</div>
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;color:var(--text);">${beforeLabel}</div>
+          </div>
+          <div style="font-size:0.8rem;color:var(--muted);padding-top:6px;">→</div>
+          <div style="flex:1;background:rgba(232,69,69,0.12);border:1px solid rgba(232,69,69,0.3);border-radius:4px;padding:4px 7px;">
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;letter-spacing:1px;text-transform:uppercase;color:#e84545;margin-bottom:2px;">After</div>
+            <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;color:var(--text);">${afterLabel}</div>
+          </div>
+        </div>`;
+      return row;
+    }
+
+    let hasContent = false;
+
+    // ── TAMPER EVENTS ──
+    if (isTampered) {
+      tamperedEntries.forEach((te, ti) => {
+        const tDate = new Date(te.changedAt);
+        const tStr  = tDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) +
+                      ' · ' + tDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+        const diffs = diffPicks(te.oldPicks, te.newPicks);
+
+        const diffRows = diffs.map(d => {
+          const rName    = ROUND_NAMES[d.ri] ?? `Round ${(d.ri??0)+1}`;
+          const gameNum  = (d.mi ?? 0) + 1;
+          const gameLabel = `${rName} · Game ${gameNum}`;
+          return makeDiffRow(gameLabel, teamPickLabel(d.before), teamPickLabel(d.after));
         });
 
-        body.appendChild(section);
+        const noDiffNote = document.createElement('div');
+        noDiffNote.style.cssText = 'font-family:\'Barlow Condensed\',sans-serif;font-size:0.78rem;color:var(--muted);font-style:italic;padding:4px 0;';
+        noDiffNote.textContent = 'No pick differences detected (metadata-only change).';
+
+        const sec = makeSection(
+          `⚠ Tamper Event ${tamperedEntries.length > 1 ? ti + 1 + ' ' : ''}— ${tStr}`,
+          '#e84545',
+          diffs.length > 0 ? diffRows : [noDiffNote]
+        );
+        body.appendChild(sec);
+        hasContent = true;
       });
     }
 
-    // Toggle expand/collapse
+    // ── CURRENT PICKS ──
+    if (ST) {
+      const matchPicks = pred.picks?.matchPicks || {};
+      const roundSections = [];
+      ST.rounds.forEach((round, ri) => {
+        const rows = [];
+        round.forEach((m, mi) => {
+          const pickedId = matchPicks[m.id];
+          if (!pickedId) return;
+          const pickedTeam    = TEAMS.find(t => t.id === pickedId);
+          const pickedLabel   = pickedTeam ? `${pickedTeam.label}: ${pickedTeam.p1} & ${pickedTeam.p2}` : pickedId;
+          const topTeam  = m.top && m.top !== 'BYE' ? m.top : null;
+          const botTeam  = m.bottom && m.bottom !== 'BYE' ? m.bottom : null;
+          const opponent = (topTeam && botTeam) ? (topTeam.id === pickedId ? botTeam : topTeam) : null;
+          const oppLabel = opponent ? `${opponent.label}: ${opponent.p1} & ${opponent.p2}` : null;
+          const realWinner = m.winner && m.winner !== 'BYE' ? m.winner : null;
+          let status, statusColor, statusIcon;
+          if (!realWinner)                       { status='Pending'; statusColor='#7a8499'; statusIcon='⏳'; }
+          else if (realWinner.id === pickedId)   { status='Correct'; statusColor='#2ecc71'; statusIcon='✓'; }
+          else                                   { status='Wrong';   statusColor='#e84545'; statusIcon='✗'; }
+          const pts = ROUND_PTS[ri] || Math.pow(2, ri);
+          const ptsEarned = realWinner ? (realWinner.id === pickedId ? `+${pts}pt` : '0pt') : '';
+          const autoFillIds = pred.picks?.autoFillIds || [];
+          const isAutoFilled = autoFillIds.includes(m.id);
+          // Skip auto-filled rows in the expanded view — they're noise
+          if (isAutoFilled) return;
+          rows.push(makePickRow(`Game ${mi+1}`, pickedLabel, oppLabel, status, statusColor, statusIcon, ptsEarned));
+        });
+        if (rows.length > 0) roundSections.push({ ri, rows });
+      });
+      roundSections.forEach(({ ri, rows }) => {
+        body.appendChild(makeSection(ROUND_NAMES[ri] || `Round ${ri+1}`, 'var(--accent)', rows));
+        hasContent = true;
+      });
+    }
+
+    if (!hasContent) {
+      body.innerHTML = '<div style="font-family:\'Barlow Condensed\',sans-serif;font-size:0.8rem;color:var(--muted);font-style:italic;">No picks recorded.</div>';
+    }
+
     header.addEventListener('click', () => {
-      const isOpen = body.style.display !== 'none';
-      body.style.display = isOpen ? 'none' : 'block';
+      const open = body.style.display !== 'none';
+      body.style.display = open ? 'none' : 'block';
       const chev = header.querySelector('.alog-chevron');
-      if (chev) chev.style.transform = isOpen ? '' : 'rotate(180deg)';
+      if (chev) chev.style.transform = open ? '' : 'rotate(180deg)';
     });
 
     card.appendChild(header);
@@ -3668,6 +3792,14 @@ function initApp(firestoreData) {
           setTimeout(() => showChampOverlay(champ), 600);
         }
       }
+    });
+  }
+
+  // ── Real-time audit log listener ──
+  if (window._fbListenAuditLog) {
+    window._fbListenAuditLog(entries => {
+      auditLogs = entries;
+      renderActivityLog(allPreds);
     });
   }
 
