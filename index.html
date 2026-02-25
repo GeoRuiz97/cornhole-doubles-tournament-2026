@@ -8,7 +8,7 @@
 <!-- Firebase SDKs -->
 <script type="module">
 import { initializeApp }                        from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, doc, setDoc, onSnapshot, getDoc, deleteDoc, addDoc, collection as fbCollection, query, orderBy }
+import { getFirestore, doc, setDoc, onSnapshot, getDoc, deleteDoc }
                                                 from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged }
                                                 from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -61,28 +61,10 @@ const PREDS_COL = 'predictions';
 
 window._fbSavePrediction = async function(name, picks, existingDocId) {
   try {
+    // Use a stable doc ID based on name so updates overwrite the same document
     const docId = existingDocId || name.trim().toLowerCase().replace(/[^a-z0-9]/g,'_');
-    const ref   = doc(db, PREDS_COL, docId);
-    const now   = Date.now();
-
-    // Read current state before overwriting (for audit trail)
-    const existing = await getDoc(ref);
-    const oldData  = existing.exists() ? existing.data() : null;
-
-    // Write the prediction
-    await setDoc(ref, { name: name.trim(), picks, submittedAt: now, docId });
-
-    // Write an audit log entry — always, even for first submission
-    const auditEntry = {
-      predDocId:   docId,
-      name:        name.trim(),
-      changedAt:   now,
-      oldPicks:    oldData ? (oldData.picks?.matchPicks || {}) : null,
-      newPicks:    picks?.matchPicks || {},
-      isFirstSubmit: !oldData,
-    };
-    await addDoc(fbCollection(db, 'audit_log'), auditEntry);
-
+    const ref = doc(db, PREDS_COL, docId);
+    await setDoc(ref, { name: name.trim(), picks, submittedAt: Date.now(), docId });
     return docId;
   } catch(e) { console.error('Prediction save error:', e); return null; }
 };
@@ -117,15 +99,6 @@ window._fbListenPredictions = function(callback) {
 import { collection, onSnapshot as onSnap2 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 window._fbImports = { collection, onSnapshot: onSnap2 };
 
-// ── Audit log collection ──
-window._fbListenAuditLog = function(callback) {
-  const q = query(fbCollection(db, 'audit_log'), orderBy('changedAt', 'desc'));
-  onSnapshot(q, snap => {
-    const entries = [];
-    snap.forEach(d => entries.push({ id: d.id, ...d.data() }));
-    callback(entries);
-  });
-};
 
 // ── Match Schedules ──
 const SCHED_DOC = doc(db, 'bracket', 'schedules');
@@ -2595,7 +2568,6 @@ let fullPicks      = {};   // matchId → teamId
 let matchSchedules = {}; // matchId → { date, time } strings
 let rrRound    = 0;    // current round index in round-by-round picker
 let allPreds   = [];
-let auditLogs  = []; // all audit_log entries, newest first
 let myDocId    = null; // Firestore doc ID for current user's prediction
 let isEditMode = false;
 
@@ -2873,22 +2845,22 @@ async function submitPrediction() {
 
   if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Please enter your name.'; return; }
 
-  // Track which matches are already locked (auto-filled) vs user-chosen
-  const autoFilledIds = new Set();
+  // Auto-fill any locked matches with the real bracket winner
+  // so late joiners are never blocked by already-played games
   ST.rounds.forEach((round, ri) => {
     round.forEach(m => {
       if (isMatchLocked(m.id) && !fullPicks[m.id]) {
         fullPicks[m.id] = m.winner.id;
-        autoFilledIds.add(m.id);
       }
     });
   });
 
   // Require picks for all remaining unlocked non-bye matches
+  // Use getPredContestants so later rounds resolve from user picks, not real bracket
   const missingPicks = [];
   ST.rounds.forEach((round, ri) => {
     round.forEach(m => {
-      if (isMatchLocked(m.id)) return;
+      if (isMatchLocked(m.id)) return; // already auto-filled above
       const [t, b] = getPredContestants(m, ri);
       const topReal = t && t !== 'BYE' && t.id;
       const botReal = b && b !== 'BYE' && b.id;
@@ -2918,14 +2890,7 @@ async function submitPrediction() {
     return;
   }
 
-  // Store user picks separately from auto-filled ones
-  const userPickIds = new Set(Object.keys(fullPicks).filter(mid => !autoFilledIds.has(mid)));
-  const picks = {
-    type:        'full',
-    matchPicks:  { ...fullPicks },
-    userPickIds: [...userPickIds],   // which picks the user actually made
-    autoFillIds: [...autoFilledIds], // which were auto-filled from locked matches
-  };
+  const picks = { type: 'full', matchPicks: { ...fullPicks } };
   msgEl.textContent = 'Saving...';
   const savedId = await window._fbSavePrediction(name, picks, null);
   if (savedId) {
@@ -3545,9 +3510,7 @@ function renderActivityLog(preds) {
     // ── Header ──
     const tamperedBadge = isTampered
       ? `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.6rem;letter-spacing:1.5px;text-transform:uppercase;background:rgba(232,69,69,0.18);border:1px solid rgba(232,69,69,0.5);color:#e84545;border-radius:4px;padding:2px 7px;white-space:nowrap;flex-shrink:0;">⚠ Tampered</span>`
-      : suspiciousPickCount
-        ? `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.6rem;letter-spacing:1.5px;text-transform:uppercase;background:rgba(245,166,35,0.15);border:1px solid rgba(245,166,35,0.4);color:var(--accent);border-radius:4px;padding:2px 7px;white-space:nowrap;flex-shrink:0;">⚠ Suspicious</span>`
-        : '';
+      : '';
     const todayBadge = (!isTampered && isToday)
       ? `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.6rem;letter-spacing:1px;text-transform:uppercase;background:rgba(245,166,35,0.18);border:1px solid rgba(245,166,35,0.4);color:var(--accent);border-radius:4px;padding:2px 6px;white-space:nowrap;flex-shrink:0;">Today</span>`
       : '';
@@ -3555,17 +3518,7 @@ function renderActivityLog(preds) {
       ? `<span style="font-family:'Bebas Neue',sans-serif;font-size:0.95rem;color:#2ecc71;white-space:nowrap;flex-shrink:0;">${scored.total}pt</span>`
       : '';
 
-    // Warn if pick count looks suspicious:
-    // No userPickIds field = old submission format, can't tell; show neutral
-    // userPickIds present but contains matches that were locked at bracket time = possible tamper
-    const suspiciousPickCount = (() => {
-      const up = pred.picks?.userPickIds;
-      if (!up) return false; // old format, no data to judge
-      if (!ST) return false;
-      // Check if any userPickIds match a currently-locked match
-      // (meaning they submitted a "user pick" for a match that was already decided)
-      return up.some(mid => isMatchLocked(mid));
-    })();
+
 
     const header = document.createElement('div');
     header.style.cssText = `
@@ -3578,15 +3531,7 @@ function renderActivityLog(preds) {
           ${pred.name || '(unnamed)'}
         </div>
         <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;color:var(--muted);margin-top:1px;">
-          ${dateStr ? `${dateStr} · ${timeStr}` : 'No timestamp'}&nbsp;·&nbsp;${(() => {
-            const up = pred.picks?.userPickIds;
-            const total = Object.keys(pred.picks?.matchPicks || {}).length;
-            const userCount = up ? up.length : total;
-            const autoCount = total - userCount;
-            let txt = `${userCount} pick${userCount !== 1 ? 's' : ''}`;
-            if (autoCount > 0) txt += ` <span style="color:var(--muted);font-style:italic;">(+${autoCount} auto-filled)</span>`;
-            return txt;
-          })()}
+          ${dateStr ? `${dateStr} · ${timeStr}` : 'No timestamp'}&nbsp;·&nbsp;${Object.keys(pred.picks?.matchPicks || {}).length} picks
           ${isTampered ? ` · <span style="color:#e84545;">${tamperedEntries.length} tamper event${tamperedEntries.length > 1 ? 's' : ''}</span>` : ''}
         </div>
       </div>
@@ -3698,10 +3643,6 @@ function renderActivityLog(preds) {
           else                                   { status='Wrong';   statusColor='#e84545'; statusIcon='✗'; }
           const pts = ROUND_PTS[ri] || Math.pow(2, ri);
           const ptsEarned = realWinner ? (realWinner.id === pickedId ? `+${pts}pt` : '0pt') : '';
-          const autoFillIds = pred.picks?.autoFillIds || [];
-          const isAutoFilled = autoFillIds.includes(m.id);
-          // Skip auto-filled rows in the expanded view — they're noise
-          if (isAutoFilled) return;
           rows.push(makePickRow(`Game ${mi+1}`, pickedLabel, oppLabel, status, statusColor, statusIcon, ptsEarned));
         });
         if (rows.length > 0) roundSections.push({ ri, rows });
@@ -3792,14 +3733,6 @@ function initApp(firestoreData) {
           setTimeout(() => showChampOverlay(champ), 600);
         }
       }
-    });
-  }
-
-  // ── Real-time audit log listener ──
-  if (window._fbListenAuditLog) {
-    window._fbListenAuditLog(entries => {
-      auditLogs = entries;
-      renderActivityLog(allPreds);
     });
   }
 
