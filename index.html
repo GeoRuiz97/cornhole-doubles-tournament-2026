@@ -1212,16 +1212,6 @@ document.dispatchEvent(new Event('fbReady'));
   }
   .pred-msg.success { color: var(--green); }
   .pred-msg.error   { color: var(--red); }
-  /* View-mode read-only overlay */
-  #rrViewOverlay {
-    display: none;
-    position: absolute;
-    inset: 0;
-    z-index: 10;
-    cursor: not-allowed;
-    border-radius: 8px;
-  }
-  #rrViewOverlay.active { display: block; }
   .rr-picker-wrap { position: relative; }
 /* ── Round-by-round picker ── */
   .rr-progress {
@@ -1525,6 +1515,10 @@ document.dispatchEvent(new Event('fbReady'));
     <span class="fab-label">Make a Pick</span>
     <button class="fab fab-pick" onclick="togglePanel('pickPanel')" title="Make your pick">🎯</button>
   </div>
+  <div id="fabActivityWrap" style="display:none;flex-direction:column;align-items:center;gap:4px;">
+    <span class="fab-label">Activity</span>
+    <button class="fab" style="background:linear-gradient(135deg,#2a3347,#1e2535);border-color:#3a4e6e;font-size:1.2rem;" onclick="togglePanel('activityPanel')" title="Activity Log">📋</button>
+  </div>
 </div>
 
 <!-- ── Pick Panel ── -->
@@ -1534,19 +1528,14 @@ document.dispatchEvent(new Event('fbReady'));
     <button class="panel-close" onclick="closePanel('pickPanel')">✕</button>
   </div>
   <div class="panel-body">
-    <!-- Name + lookup -->
-    <div style="display:flex;gap:8px;margin-bottom:4px;">
-      <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" style="margin-bottom:0;flex:1;" oninput="setLookupMsg('','')" />
-      <button class="pred-btn" style="width:auto;padding:9px 14px;margin-top:0;flex-shrink:0;font-size:0.82rem;" onclick="lookupExistingPick()">Look Up</button>
-    </div>
-    <div id="lookupMsg" style="min-height:18px;margin-bottom:8px;font-family:'Barlow Condensed',sans-serif;font-size:0.78rem;letter-spacing:0.3px;display:none;"></div>
+    <!-- Name -->
+    <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" />
     <!-- Scoring key -->
     <div id="scoringKey" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
       <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;letter-spacing:1px;color:var(--muted);width:100%;text-transform:uppercase;">Points per correct pick:</span>
     </div>
     <!-- Round-by-round picker (always shown) -->
     <div class="rr-picker-wrap">
-      <div id="rrViewOverlay"></div>
       <div class="rr-progress" id="rrProgress"></div>
       <div class="rr-round-label" id="rrRoundLabel"></div>
       <div class="rr-round-sub"  id="rrRoundSub"></div>
@@ -1570,6 +1559,20 @@ document.dispatchEvent(new Event('fbReady'));
   <div class="panel-body">
     <div class="leaderboard-list" id="leaderboard">
       <div class="lb-empty">No picks submitted yet</div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Activity Log Panel (Admin only) ── -->
+<div class="slide-panel" id="activityPanel">
+  <div class="panel-header">
+    <span class="panel-title">📋 Submission Activity Log</span>
+    <button class="panel-close" onclick="closePanel('activityPanel')">✕</button>
+  </div>
+  <div class="panel-body">
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);margin-bottom:10px;">All bracket submissions · newest first</div>
+    <div id="activityLog">
+      <div class="lb-empty">No submissions yet</div>
     </div>
   </div>
 </div>
@@ -1883,6 +1886,8 @@ function applyUnlock() {
   document.getElementById('lockHint').textContent   = '🔓 Bracket editing enabled';
   document.getElementById('resetBtn').disabled      = false;
   document.body.classList.add('admin-unlocked');
+  const actFab = document.getElementById('fabActivityWrap');
+  if (actFab) actFab.style.display = 'flex';
   document.getElementById('bracket').classList.remove('bracket-locked');
 
   // Auto-lock after 30 min
@@ -1902,6 +1907,9 @@ function lock() {
   document.getElementById('resetBtn').disabled      = true;
   document.body.classList.remove('admin-unlocked');
   document.getElementById('bracket').classList.add('bracket-locked');
+  const actFab2 = document.getElementById('fabActivityWrap');
+  if (actFab2) actFab2.style.display = 'none';
+  closePanel('activityPanel');
 }
 
 function toggleLock() {
@@ -2547,10 +2555,6 @@ function togglePanel(id) {
   document.querySelectorAll('.slide-panel').forEach(p => p.classList.remove('open'));
   if (!isOpen) {
     panel.classList.add('open');
-    // If opening pick panel fresh without a loaded pick, ensure edit mode is active
-    if (id === 'pickPanel' && !isEditMode && !myDocId) {
-      setViewMode(false);
-    }
   }
 }
 function closePanel(id) {
@@ -2565,7 +2569,6 @@ let rrRound    = 0;    // current round index in round-by-round picker
 let allPreds   = [];
 let myDocId    = null; // Firestore doc ID for current user's prediction
 let isEditMode = false;
-let isViewMode = false; // true when viewing existing picks read-only (before clicking Edit)
 
 const RNAMES      = ['Round 1','Round 2','Quarterfinals','Semifinals','Championship'];
 const ROUND_PTS   = [1, 2, 4, 8, 16]; // points per correct pick per round
@@ -2825,109 +2828,12 @@ function rrNav(dir) {
   renderRRRound();
 }
 
-function setViewMode(on) {
-  isViewMode = on;
-  const overlay   = document.getElementById('rrViewOverlay');
-  const submitBtn = document.getElementById('predSubmitBtn');
-  const prevBtn   = document.getElementById('rrPrevBtn');
-  const nextBtn   = document.getElementById('rrNextBtn');
-  if (overlay)   overlay.classList.toggle('active', on);
-  if (submitBtn) submitBtn.style.display = on ? 'none' : '';
-  if (prevBtn)   prevBtn.disabled = false;
-  if (nextBtn)   nextBtn.disabled = false;
-}
-
-function setLookupMsg(text, type) {
-  const el = document.getElementById('lookupMsg');
-  if (!el) return;
-  el.textContent = text;
-  el.style.display = text ? 'block' : 'none';
-  el.style.color = type === 'error' ? 'var(--red)' : type === 'success' ? 'var(--green)' : 'var(--muted)';
-}
-
-async function lookupExistingPick() {
-  const name  = document.getElementById('predName').value.trim();
-  const msgEl = document.getElementById('predMsg');
-  if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Enter your name first.'; return; }
-  msgEl.className = 'pred-msg'; msgEl.textContent = '';
-
-  // Try stable doc ID first
-  let existing = await window._fbGetPrediction?.(name);
-
-  // Fallback: search allPreds in memory (catches old docs with timestamp suffix)
-  if (!existing && allPreds.length > 0) {
-    existing = allPreds.find(p => p.name?.trim().toLowerCase() === name.toLowerCase()) || null;
-    if (existing) {
-      // Migrate: re-save under stable doc ID so future lookups work
-      myDocId    = existing.docId || existing.id;
-      isEditMode = true;
-      const picks = existing.picks;
-      if (picks?.matchPicks) {
-        fullPicks = { ...picks.matchPicks };
-        renderRRRound();
-      }
-      const locked = countLockedPicks(picks);
-      setLookupMsg('', '');
-      msgEl.className = 'pred-msg';
-      msgEl.innerHTML = locked > 0
-        ? `<span style="color:var(--accent)">✎ ${locked} match${locked>1?'es':''} already locked.</span>`
-        : '';
-      setViewMode(true);
-      msgEl.className = 'pred-msg success';
-      msgEl.innerHTML = locked > 0
-        ? `✅ Your bracket is saved! <span style="color:var(--muted);font-size:0.75rem;">${locked} match${locked>1?'es':''} already locked.</span>`
-        : `✅ Your bracket is saved! Picks are locked — no changes allowed.`;
-      return;
-    }
-  }
-
-  if (existing) {
-    await loadExistingPick(name);
-  } else {
-    isEditMode = false; myDocId = null;
-    setLookupMsg('No existing pick found — try a different name.', 'error');
-    msgEl.className = 'pred-msg'; msgEl.textContent = '';
-    document.getElementById('predSubmitBtn').textContent = 'Submit Bracket';
-  }
-}
 
 // Check if a match is "locked" (result already confirmed in bracket)
 function isMatchLocked(matchId) {
   if (!ST) return false;
   const m = findMatch(matchId);
   return !!(m && m.winner && m.winner !== 'BYE');
-}
-
-// Returns how many of a user's picks are now locked (can't be changed)
-function countLockedPicks(existingPicks) {
-  if (!existingPicks || existingPicks.type !== 'full') return 0;
-  return Object.entries(existingPicks.matchPicks || {}).filter(([mid]) => isMatchLocked(mid)).length;
-}
-
-// Load an existing prediction into the form — read-only view first
-async function loadExistingPick(name) {
-  if (!window._fbGetPrediction) return;
-  const existing = await window._fbGetPrediction(name);
-  if (!existing) return;
-
-  myDocId    = existing.docId || existing.id;
-  isEditMode = true;
-  const picks = existing.picks;
-
-  // Restore full bracket picks
-  if (picks.matchPicks) {
-    fullPicks = { ...picks.matchPicks };
-    rrRound = 0;
-    renderRRRound();
-  }
-
-  // Enter view-only mode — user must click Edit to make changes
-  setViewMode(true);
-
-  const locked = countLockedPicks(picks);
-  const msgEl  = document.getElementById('predMsg');
-  msgEl.className = 'pred-msg success';
-  msgEl.innerHTML = `✅ Your bracket is saved! Picks are locked — no changes allowed.`;
 }
 
 async function submitPrediction() {
@@ -2983,7 +2889,7 @@ async function submitPrediction() {
     return;
   }
 
-  // const picks = { type: 'full', matchPicks: { ...fullPicks } };
+  const picks = { type: 'full', matchPicks: { ...fullPicks } };
   msgEl.textContent = 'Saving...';
   const savedId = await window._fbSavePrediction(name, picks, null);
   if (savedId) {
@@ -3515,6 +3421,66 @@ function saveEditMatch() {
 }
 
 
+
+/* ─── ACTIVITY LOG ──────────────────────────────────────────── */
+function renderActivityLog(preds) {
+  const el = document.getElementById('activityLog');
+  if (!el) return;
+  if (!preds || preds.length === 0) {
+    el.innerHTML = '<div class="lb-empty">No submissions yet</div>';
+    return;
+  }
+
+  // Sort newest first
+  const sorted = [...preds].sort((a, b) => (b.submittedAt || 0) - (a.submittedAt || 0));
+
+  const now      = new Date();
+  const todayStr = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+
+  el.innerHTML = '';
+
+  sorted.forEach(pred => {
+    const ts   = pred.submittedAt ? new Date(pred.submittedAt) : null;
+    const dateStr = ts
+      ? ts.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+      : null;
+    const timeStr = ts
+      ? ts.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+      : 'Unknown time';
+    const isToday = dateStr === todayStr;
+
+    const row = document.createElement('div');
+    row.style.cssText = `
+      display:flex; align-items:center; gap:10px;
+      padding:9px 12px;
+      border-radius:7px;
+      margin-bottom:6px;
+      background:${isToday ? 'rgba(245,166,35,0.07)' : 'var(--card)'};
+      border:1px solid ${isToday ? 'rgba(245,166,35,0.28)' : 'var(--border)'};
+    `;
+
+    const todayBadge = isToday
+      ? `<span style="font-family:'Barlow Condensed',sans-serif;font-size:0.62rem;letter-spacing:1px;text-transform:uppercase;background:rgba(245,166,35,0.18);border:1px solid rgba(245,166,35,0.4);color:var(--accent);border-radius:4px;padding:2px 6px;flex-shrink:0;">Today</span>`
+      : '';
+
+    const picks = pred.picks?.matchPicks || {};
+    const pickCount = Object.keys(picks).length;
+
+    row.innerHTML = `
+      <div style="flex:1;min-width:0;">
+        <div style="font-family:'Barlow Condensed',sans-serif;font-weight:600;font-size:0.95rem;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+          ${pred.name || '(unnamed)'}
+        </div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.72rem;color:var(--muted);margin-top:2px;letter-spacing:0.3px;">
+          ${dateStr ? `${dateStr} · ${timeStr}` : 'No timestamp'} &nbsp;·&nbsp; ${pickCount} pick${pickCount !== 1 ? 's' : ''}
+        </div>
+      </div>
+      ${todayBadge}
+    `;
+    el.appendChild(row);
+  });
+}
+
 /* ─── INIT ──────────────────────────────────────────────────── */
 // Show a loading state while Firebase connects
 document.getElementById('bracket').innerHTML =
@@ -3568,6 +3534,7 @@ function initApp(firestoreData) {
   if (window._fbListenPredictions) {
     window._fbListenPredictions(preds => {
       updateLeaderboard(preds);
+      renderActivityLog(preds);
       // Re-check overlay in case preds loaded after bracket
       if (!_champOverlayShown) {
         const champ = ST?.rounds[ST.rounds.length-1][0]?.winner;
