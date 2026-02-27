@@ -3092,7 +3092,7 @@ async function deletePrediction(docId, name) {
 }
 
 /* ─── WIN ANNOUNCEMENT POPUP ────────────────────────────────── */
-let _winPopupShown = false;
+let _lastShownWinMatchId = null; // track which match was last announced, not just a boolean
 
 function closeWinPopup() {
   document.getElementById('winPopup').classList.remove('visible');
@@ -3149,11 +3149,11 @@ async function generateWinMessage(winner, loser, roundName) {
 }
 
 async function showWinPopup() {
-  if (_winPopupShown) return;
   const latest = getLatestWin();
   if (!latest) return;
-
-  _winPopupShown = true;
+  // Only show if this is a new result we haven't announced yet
+  if (latest.matchId === _lastShownWinMatchId) return;
+  _lastShownWinMatchId = latest.matchId;
 
   const { winner, loser, roundName } = latest;
   document.getElementById('wpTeams').textContent = `${winner.p1} & ${winner.p2}`;
