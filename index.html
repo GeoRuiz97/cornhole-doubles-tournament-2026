@@ -1511,7 +1511,7 @@ document.dispatchEvent(new Event('fbReady'));
     <span class="fab-label">Leaderboard</span>
     <button class="fab fab-lb" onclick="togglePanel('lbPanel')" title="Leaderboard">🏅</button>
   </div>
-  <div style="display:none;flex-direction:column;align-items:center;gap:4px;">
+  <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
     <span class="fab-label">Make a Pick</span>
     <button class="fab fab-pick" onclick="togglePanel('pickPanel')" title="Make your pick">🎯</button>
   </div>
@@ -1528,10 +1528,14 @@ document.dispatchEvent(new Event('fbReady'));
     <button class="panel-close" onclick="closePanel('pickPanel')">✕</button>
   </div>
   <div class="panel-body">
-    <!-- Hidden elements kept for JS compatibility -->
-    <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" style="display:none;" />
-    <div id="scoringKey" style="display:none;"></div>
-    <div class="rr-picker-wrap" style="display:none;">
+    <!-- Name -->
+    <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" />
+    <!-- Scoring key -->
+    <div id="scoringKey" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
+      <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;letter-spacing:1px;color:var(--muted);width:100%;text-transform:uppercase;">Points per correct pick:</span>
+    </div>
+    <!-- Round-by-round picker (always shown) -->
+    <div class="rr-picker-wrap">
       <div class="rr-progress" id="rrProgress"></div>
       <div class="rr-round-label" id="rrRoundLabel"></div>
       <div class="rr-round-sub"  id="rrRoundSub"></div>
@@ -1541,23 +1545,10 @@ document.dispatchEvent(new Event('fbReady'));
         <button class="rr-nav-btn next" id="rrNextBtn" onclick="rrNav(1)">Next →</button>
       </div>
     </div>
-    <button class="pred-btn" id="predSubmitBtn" onclick="submitPrediction()" style="display:none;">Submit Bracket</button>
+    <button class="pred-btn" id="predSubmitBtn" onclick="submitPrediction()" style="margin-top:14px;">Submit Bracket</button>
     <div class="pred-msg" id="predMsg"></div>
-    <!-- Picks Closed Notice -->
-    <div style="
-      text-align:center;
-      padding:40px 20px;
-      display:flex;
-      flex-direction:column;
-      align-items:center;
-      gap:16px;
-    ">
-      <div style="font-size:3rem;line-height:1;">🔒</div>
-      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:4px;color:var(--accent);">Picks Are Closed</div>
-      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.95rem;color:var(--muted);letter-spacing:1px;line-height:1.5;">
-        Bracket submissions are no longer being accepted.<br>Check the leaderboard to see how everyone is doing!
-      </div>
-    </div>
+  </div>
+</div>
   </div>
 </div>
 
@@ -2627,17 +2618,25 @@ function clearDownstreamPicks(changedMatchId) {
 /* ── Round-by-round picker ── */
 
 // Resolve which team the user has picked to come out of a source match.
-// Falls back to the actual bracket team for R1 (which has real teams).
+// If the source match is already locked, fall back to the real winner so that
+// later-round matches show correct contestants even for late entrants.
 function resolvePickedTeam(srcMatchId) {
   const srcMatch = findMatch(srcMatchId);
   if (!srcMatch) return null;
 
   const pickedId = fullPicks[srcMatchId];
   if (pickedId) {
-    // Find the team object in R1 — walk back through srcA/srcB recursively
     return findTeamById(pickedId);
   }
-  // If no pick yet for that source match, return null (TBD)
+
+  // If source match has a confirmed winner (locked), use it and cache in fullPicks
+  // so downstream rounds can display their contestants correctly.
+  if (srcMatch.winner && srcMatch.winner !== 'BYE') {
+    fullPicks[srcMatchId] = srcMatch.winner.id;
+    return findTeamById(srcMatch.winner.id) || srcMatch.winner;
+  }
+
+  // No pick yet and match not yet played -> TBD
   return null;
 }
 
@@ -2652,15 +2651,32 @@ function findTeamById(teamId) {
 }
 
 // Get the two contestants for a match in the user's prediction bracket.
-// For R1 use actual teams; for later rounds resolve from user's picks.
+// For R1 use actual teams. For later rounds:
+//   - If the source match is already locked (propagate() has set match.top/bottom),
+//     use the real bracket team directly.
+//   - Otherwise resolve from the user's own picks (tournament not yet played).
 function getPredContestants(match, ri) {
   if (ri === 0) {
-    // Round 1: use actual seeded teams
+    // Round 1: always use actual seeded teams
     return [match.top, match.bottom];
   }
-  // Later rounds: resolve from user's picks of source matches
-  const topTeam = match.srcA ? resolvePickedTeam(match.srcA) : match.top;
-  const botTeam = match.srcB ? resolvePickedTeam(match.srcB) : match.bottom;
+
+  // For later rounds, check each side:
+  // If the source match has a winner (locked), the real team is already in match.top/bottom.
+  // Otherwise resolve from the user's picks.
+  function getSlotTeam(srcId, fallback) {
+    if (!srcId) return fallback;
+    const srcMatch = findMatch(srcId);
+    if (srcMatch && srcMatch.winner && srcMatch.winner !== 'BYE') {
+      // Source is locked — use the real propagated team (already in match.top/bottom)
+      return fallback || resolvePickedTeam(srcId);
+    }
+    // Source not yet played — resolve from user's pick
+    return resolvePickedTeam(srcId);
+  }
+
+  const topTeam = getSlotTeam(match.srcA, match.top);
+  const botTeam = getSlotTeam(match.srcB, match.bottom);
   return [topTeam, botTeam];
 }
 
@@ -2668,6 +2684,32 @@ function renderRRRound() {
   if (!ST) return;
   const rounds = ST.rounds;
   const totalRounds = rounds.length;
+
+  // If the current round is fully locked (all real matches already played),
+  // auto-skip forward to the first round that has at least one unpicked match.
+  // This prevents late entrants from seeing a round full of locked games.
+  // A round is "fully locked" when every match that has two real teams already has a winner.
+  // Matches where one/both slots are null (not yet determined) are NOT locked — they're just
+  // not playable yet. A round with only such TBD matches should NOT be skipped over.
+  function roundIsFullyLocked(ri) {
+    let hasPickableMatch = false;
+    for (const m of rounds[ri]) {
+      const topBye = !m.top || m.top === 'BYE';
+      const botBye = !m.bottom || m.bottom === 'BYE';
+      if (topBye || botBye) continue; // BYE or TBD — skip
+      // Both sides are real teams
+      if (!isMatchLocked(m.id)) return false; // found an unplayed real match → not fully locked
+      hasPickableMatch = true;
+    }
+    // If there were real matches and all were locked, it's fully locked.
+    // If there were NO real matches at all (all TBD), treat as NOT locked so we don't skip it
+    // when it might get real teams soon — but if rrRound logic needs to advance, that's handled elsewhere.
+    return hasPickableMatch;
+  }
+  // Skip to the first round that has at least one unplayed real match to pick
+  while (rrRound < totalRounds - 1 && roundIsFullyLocked(rrRound)) {
+    rrRound++;
+  }
 
   // Progress bar
   const prog = document.getElementById('rrProgress');
@@ -2699,17 +2741,20 @@ function renderRRRound() {
     });
   }
 
-  // Auto-fill locked matches with the real winner so they don't block progress
+  // Auto-fill locked matches silently with the real winner so they don't block
+  // navigation — but these picks will be excluded from scoring for late entrants.
   round.forEach(m => {
     if (isMatchLocked(m.id) && !fullPicks[m.id]) {
       fullPicks[m.id] = m.winner.id;
     }
   });
 
-  // Count pickable matches for this round using resolved contestants
+  // Count pickable matches for this round — exclude already-locked games
+  // so late entrants only need to pick games that haven't been played yet.
   let pickableCount = 0;
   let pickedCount   = 0;
   round.forEach(m => {
+    if (isMatchLocked(m.id)) return; // already played — not counted for new pickers
     const [topTeam, botTeam] = getPredContestants(m, rrRound);
     const topReal = topTeam && topTeam !== 'BYE' && topTeam.id;
     const botReal = botTeam && botTeam !== 'BYE' && botTeam.id;
@@ -2728,7 +2773,19 @@ function renderRRRound() {
     (allPicked ? ' <span style="color:var(--green);">✓ Round complete!</span>' : '');
 
   matchC.innerHTML = '';
+
+  // Track whether any locked matches exist in this round (to show a notice)
+  let lockedMatchCount = 0;
+
   round.forEach((match, mi) => {
+    const locked = isMatchLocked(match.id);
+
+    // Skip locked matches — they've already been played; late entrants can't pick them
+    if (locked) {
+      lockedMatchCount++;
+      return;
+    }
+
     const [topTeam, botTeam] = getPredContestants(match, rrRound);
     const topBye = !topTeam || topTeam === 'BYE';
     const botBye = !botTeam || botTeam === 'BYE';
@@ -2758,43 +2815,19 @@ function renderRRRound() {
       } else {
         const isSelected = fullPicks[match.id] === team.id;
         if (isSelected) btn.classList.add('rr-selected');
-        const locked = isMatchLocked(match.id);
-        if (locked) btn.disabled = true;
 
-        // Determine correct/wrong state for locked matches where user has submitted
-        let resultClass = '';
-        let resultBadge = '';
-        if (locked && myDocId) {
-          const realWinnerId = findMatch(match.id)?.winner?.id;
-          if (isSelected) {
-            if (realWinnerId === team.id) {
-              resultClass = 'rr-correct';
-              resultBadge = '<span style="margin-left:auto;font-size:0.85rem;">✓</span>';
-            } else {
-              resultClass = 'rr-wrong';
-              resultBadge = '<span style="margin-left:auto;font-size:0.85rem;">✗</span>';
-            }
-          }
-        } else if (locked && !resultBadge) {
-          resultBadge = '<span style="font-size:0.65rem;color:var(--muted);margin-left:auto;">🔒</span>';
-        }
-
-        if (resultClass) btn.classList.add(resultClass);
         btn.innerHTML = `
           <div>
             <span class="rr-team-label">${team.label}</span>
             <span class="rr-team-name">${team.p1} &amp; ${team.p2}</span>
           </div>
-          ${resultBadge || (isSelected ? '<span class="rr-check">✓</span>' : '')}`;
-        if (!locked) {
-          btn.addEventListener('click', () => {
-            fullPicks[match.id] = team.id;
-            // If user changes a pick, clear any downstream picks that depended on it
-            clearDownstreamPicks(match.id);
-            fullPicks[match.id] = team.id; // re-set after clearing
-            renderRRRound();
-          });
-        }
+          ${isSelected ? '<span class="rr-check">✓</span>' : ''}`;
+        btn.addEventListener('click', () => {
+          fullPicks[match.id] = team.id;
+          clearDownstreamPicks(match.id);
+          fullPicks[match.id] = team.id; // re-set after clearing
+          renderRRRound();
+        });
       }
       card.appendChild(btn);
     });
@@ -2802,15 +2835,28 @@ function renderRRRound() {
     matchC.appendChild(card);
   });
 
+  // If some games in this round were already played, show an informational notice
+  if (lockedMatchCount > 0) {
+    const notice = document.createElement('div');
+    notice.style.cssText = `
+      margin-top:10px; padding:10px 12px; border-radius:6px;
+      background:rgba(122,132,153,0.1); border:1px solid rgba(122,132,153,0.25);
+      font-family:'Barlow Condensed',sans-serif; font-size:0.8rem;
+      color:var(--muted); letter-spacing:0.5px; line-height:1.45; text-align:center;
+    `;
+    notice.innerHTML = `🔒 <strong>${lockedMatchCount} game${lockedMatchCount > 1 ? 's' : ''}</strong> in this round already played — no points available for those.`;
+    matchC.appendChild(notice);
+  }
+
   // Nav buttons
   const prevBtn = document.getElementById('rrPrevBtn');
   const nextBtn = document.getElementById('rrNextBtn');
   if (prevBtn) prevBtn.style.display = rrRound === 0 ? 'none' : '';
 
   if (nextBtn) {
-    // Check if all real picks in this round are made — use resolved contestants
-    // so later rounds (where m.top/m.bottom are null) work correctly
+    // Only count non-locked matches — locked ones are auto-filled and don't need user picks
     const pickableNow = round.filter(m => {
+      if (isMatchLocked(m.id)) return false;
       const [t, b] = getPredContestants(m, rrRound);
       return t && t !== 'BYE' && t.id && b && b !== 'BYE' && b.id;
     });
@@ -2854,6 +2900,15 @@ async function submitPrediction() {
   msgEl.textContent = '';
 
   if (!name) { msgEl.className = 'pred-msg error'; msgEl.textContent = 'Please enter your name.'; return; }
+
+  // Capture which matches are already locked at submission time.
+  // These will be excluded from scoring so late entrants don't get free points.
+  const lockedAtSubmission = [];
+  ST.rounds.forEach(round => {
+    round.forEach(m => {
+      if (isMatchLocked(m.id)) lockedAtSubmission.push(m.id);
+    });
+  });
 
   // Auto-fill any locked matches with the real bracket winner
   // so late joiners are never blocked by already-played games
@@ -2900,7 +2955,9 @@ async function submitPrediction() {
     return;
   }
 
-  const picks = { type: 'full', matchPicks: { ...fullPicks } };
+  // Store picks along with the list of matches that were already played when
+  // this entry was submitted — the scoring function will skip those matches.
+  const picks = { type: 'full', matchPicks: { ...fullPicks }, lockedAtSubmission };
   msgEl.textContent = 'Saving...';
   const savedId = await window._fbSavePrediction(name, picks, null);
   if (savedId) {
@@ -2925,6 +2982,12 @@ function scorePrediction(pred) {
   const picks = pred.picks;
   if (!picks || !picks.matchPicks) return { total: 0, byRound: [], maxPossible: 0 };
 
+  // Matches that were already played when this entry was submitted — skip scoring these.
+  // Early entries (before this feature was added) have no lockedAtSubmission, so they
+  // score normally (all matches count, preserving backward compatibility).
+  const lockedAtSubmission = new Set(picks.lockedAtSubmission || []);
+  const isLateEntry = lockedAtSubmission.size > 0;
+
   let total = 0;
   const byRound = [];
   let maxPossible = 0;
@@ -2937,6 +3000,10 @@ function scorePrediction(pred) {
     round.forEach(match => {
       // Skip BYE matches
       if (!match.top || match.top === 'BYE' || !match.bottom || match.bottom === 'BYE') return;
+
+      // Skip matches that were already played when this late entry was submitted
+      if (isLateEntry && lockedAtSubmission.has(match.id)) return;
+
       roundMax += pts;
 
       if (VOIDED_MATCHES.has(match.id)) {
