@@ -224,8 +224,10 @@ document.dispatchEvent(new Event('fbReady'));
     cursor: pointer;
     transition: all 0.18s;
     white-space: nowrap;
+    display: none;
   }
   .btn-reset:hover { background: var(--red); color: #fff; }
+  body.admin-unlocked .btn-reset { display: inline-block; }
   .btn-export {
     background: transparent;
     border: 1px solid var(--green);
@@ -1541,11 +1543,82 @@ document.dispatchEvent(new Event('fbReady'));
     transition: all 0.15s;
   }
   .receipt-save-btn:hover { background: rgba(245,166,35,0.12); }
+  .receipt-share-btn {
+    background: var(--accent);
+    border: none;
+    color: #000;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 7px 18px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s;
+    margin-left: 8px;
+  }
+  .receipt-share-btn:hover { opacity: 0.85; }
+  .receipt-share-btn.copied {
+    background: var(--green);
+    color: #fff;
+  }
+
+  /* ── Cornhole submission animation ── */
+  #cornholeAnimOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9000;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  #cornholeAnimOverlay.active { pointer-events: all; }
+
+  @keyframes bagArc {
+    0%   { transform: translate(0, 0) rotate(0deg) scale(1);   opacity: 1; }
+    40%  { transform: translate(-60px, -220px) rotate(-200deg) scale(1.15); opacity: 1; }
+    70%  { transform: translate(-140px, -100px) rotate(-340deg) scale(0.9); opacity: 1; }
+    85%  { transform: translate(-170px, -40px) rotate(-400deg) scale(0.7);  opacity: 1; }
+    95%  { transform: translate(-178px, -12px) rotate(-430deg) scale(0.4);  opacity: 0.7; }
+    100% { transform: translate(-180px, 0px)  rotate(-440deg) scale(0);     opacity: 0; }
+  }
+  @keyframes boardShake {
+    0%,100% { transform: translateX(0) rotate(-8deg); }
+    20%     { transform: translateX(-4px) rotate(-9deg); }
+    40%     { transform: translateX(4px) rotate(-7deg); }
+    60%     { transform: translateX(-3px) rotate(-8.5deg); }
+    80%     { transform: translateX(2px) rotate(-7.5deg); }
+  }
+  @keyframes holePulse {
+    0%   { transform: scale(1);   opacity: 0; }
+    30%  { transform: scale(1.5); opacity: 1; }
+    60%  { transform: scale(0.8); opacity: 0.8; }
+    100% { transform: scale(1.2); opacity: 0; }
+  }
+  @keyframes successBurst {
+    0%   { transform: translate(-50%,-50%) scale(0); opacity: 1; }
+    60%  { transform: translate(-50%,-50%) scale(1.2); opacity: 1; }
+    100% { transform: translate(-50%,-50%) scale(1.6); opacity: 0; }
+  }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translate(-50%, 10px); }
+    to   { opacity: 1; transform: translate(-50%, 0); }
+  }
+  @keyframes fadeOutUp {
+    from { opacity: 1; transform: translate(-50%, 0); }
+    to   { opacity: 0; transform: translate(-50%, -20px); }
+  }
+  @keyframes particleFly {
+    0%   { transform: translate(0,0) scale(1); opacity: 1; }
+    100% { transform: translate(var(--px), var(--py)) scale(0); opacity: 0; }
+  }
 
 /* ─── TEAMS ─────────────────────────────────────────────────── */
 </style>
 </head>
 <body>
+
+<!-- ── Cornhole submission animation overlay ── -->
+<div id="cornholeAnimOverlay"></div>
 
 <header>
   <span class="trophy-icon">🏆</span>
@@ -3003,6 +3076,230 @@ function isMatchLocked(matchId) {
   return !!(m && m.winner && m.winner !== 'BYE');
 }
 
+/* ─── CORNHOLE SUBMISSION ANIMATION ─────────────────────────── */
+function playCornholeAnimation(onComplete) {
+  const overlay = document.getElementById('cornholeAnimOverlay');
+  overlay.innerHTML = '';
+  overlay.classList.add('active');
+
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+
+  // Starting position: bottom-right area (near submit button)
+  const startX = W * 0.72;
+  const startY = H * 0.78;
+
+  // Board target position: center-ish of screen
+  const boardX = W * 0.42;
+  const boardY = H * 0.38;
+
+  // ── Draw the cornhole board ──
+  const boardSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  boardSvg.setAttribute('width', '180');
+  boardSvg.setAttribute('height', '130');
+  boardSvg.style.cssText = `
+    position:absolute;
+    left:${boardX - 90}px;
+    top:${boardY - 65}px;
+    filter: drop-shadow(0 8px 24px rgba(0,0,0,0.6));
+    transform: rotate(-8deg);
+    transform-origin: center;
+  `;
+  boardSvg.innerHTML = `
+    <!-- Board body -->
+    <rect x="10" y="10" width="160" height="110" rx="12" fill="#8B4513" stroke="#5C2E00" stroke-width="3"/>
+    <rect x="18" y="18" width="144" height="94" rx="8" fill="#A0522D" stroke="#6B3310" stroke-width="1.5"/>
+    <!-- Wood grain lines -->
+    <line x1="18" y1="35" x2="162" y2="35" stroke="#7A3B1E" stroke-width="0.8" opacity="0.5"/>
+    <line x1="18" y1="55" x2="162" y2="55" stroke="#7A3B1E" stroke-width="0.8" opacity="0.5"/>
+    <line x1="18" y1="75" x2="162" y2="75" stroke="#7A3B1E" stroke-width="0.8" opacity="0.5"/>
+    <line x1="18" y1="95" x2="162" y2="95" stroke="#7A3B1E" stroke-width="0.8" opacity="0.5"/>
+    <!-- The hole -->
+    <circle id="animHoleGlow" cx="90" cy="62" r="22" fill="rgba(245,166,35,0)" stroke="rgba(245,166,35,0)" stroke-width="3"/>
+    <circle cx="90" cy="62" r="20" fill="#0a0c10" stroke="#3d2200" stroke-width="2.5"/>
+    <circle cx="90" cy="62" r="16" fill="#050709"/>
+    <!-- Hole rim shine -->
+    <ellipse cx="84" cy="57" rx="5" ry="3" fill="rgba(255,255,255,0.08)" transform="rotate(-20,84,57)"/>
+    <!-- Score markings -->
+    <text x="90" y="105" text-anchor="middle" font-family="'Bebas Neue',sans-serif" font-size="11"
+          fill="rgba(255,255,255,0.5)" letter-spacing="2">CORNHOLE</text>
+    <!-- Legs -->
+    <line x1="25" y1="118" x2="20" y2="128" stroke="#5C2E00" stroke-width="5" stroke-linecap="round"/>
+    <line x1="155" y1="118" x2="160" y2="128" stroke="#5C2E00" stroke-width="5" stroke-linecap="round"/>
+  `;
+  overlay.appendChild(boardSvg);
+
+  // ── Draw the bag ──
+  const bagSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  bagSvg.setAttribute('width', '44');
+  bagSvg.setAttribute('height', '44');
+  bagSvg.style.cssText = `
+    position:absolute;
+    left:${startX}px;
+    top:${startY}px;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,0.5));
+  `;
+  // Bag colors — gold & dark, matching the tournament theme
+  bagSvg.innerHTML = `
+    <rect x="4" y="4" width="36" height="36" rx="7" fill="#f5a623" stroke="#c47d0a" stroke-width="2.5"/>
+    <rect x="10" y="10" width="24" height="24" rx="4" fill="#e8941a" stroke="#c47d0a" stroke-width="1"/>
+    <!-- Stitching lines -->
+    <line x1="22" y1="4" x2="22" y2="40" stroke="#c47d0a" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+    <line x1="4" y1="22" x2="40" y2="22" stroke="#c47d0a" stroke-width="1" stroke-dasharray="3,3" opacity="0.6"/>
+    <!-- Center dot -->
+    <circle cx="22" cy="22" r="3.5" fill="#c47d0a" opacity="0.7"/>
+  `;
+  overlay.appendChild(bagSvg);
+
+  // ── Animate the bag along an arc toward the hole ──
+  // Use requestAnimationFrame for smooth physics-like arc
+  const duration = 900; // ms
+  const startTime = performance.now();
+
+  // Arc control point (for cubic bezier feel via lerp)
+  const ctrlX = (startX + boardX) / 2 - 80;
+  const ctrlY = Math.min(startY, boardY) - 280;
+
+  function lerp(a, b, t) { return a + (b - a) * t; }
+  function easeInCubic(t) { return t * t * t; }
+  function easeOutCubic(t) { return 1 - Math.pow(1 - t, 3); }
+
+  function animateBag(now) {
+    const elapsed = now - startTime;
+    const rawT = Math.min(elapsed / duration, 1);
+
+    // Ease: slow start, fast middle, slow into hole
+    const t = rawT < 0.5
+      ? easeInCubic(rawT * 2) * 0.5
+      : 0.5 + easeOutCubic((rawT - 0.5) * 2) * 0.5;
+
+    // Quadratic bezier: start → ctrl → end
+    const bx = lerp(lerp(startX, ctrlX, t), lerp(ctrlX, boardX, t), t);
+    const by = lerp(lerp(startY, ctrlY, t), lerp(ctrlY, boardY, t), t);
+
+    // Spin: 2 full rotations
+    const angle = t * 720;
+    // Scale down as it enters the hole
+    const scale = rawT > 0.75 ? 1 - (rawT - 0.75) * 3.5 : 1;
+
+    bagSvg.style.left   = `${bx - 22}px`;
+    bagSvg.style.top    = `${by - 22}px`;
+    bagSvg.style.transform = `rotate(${angle}deg) scale(${Math.max(0, scale)})`;
+    bagSvg.style.transformOrigin = '22px 22px';
+
+    if (rawT < 1) {
+      requestAnimationFrame(animateBag);
+    } else {
+      // Bag made it in — trigger hole glow + board shake
+      bagSvg.style.display = 'none';
+      triggerHoleMadeEffects();
+    }
+  }
+  requestAnimationFrame(animateBag);
+
+  function triggerHoleMadeEffects() {
+    // Board shake
+    boardSvg.style.animation = 'boardShake 0.35s ease';
+
+    // Hole glow pulse
+    const holeGlow = boardSvg.querySelector('#animHoleGlow');
+    if (holeGlow) {
+      holeGlow.style.transition = 'none';
+      // Flash bright then fade
+      let glowT = 0;
+      const glowDur = 500;
+      const glowStart = performance.now();
+      function animGlow(now) {
+        glowT = Math.min((now - glowStart) / glowDur, 1);
+        const alpha = glowT < 0.3
+          ? glowT / 0.3
+          : 1 - (glowT - 0.3) / 0.7;
+        holeGlow.setAttribute('fill', `rgba(245,166,35,${alpha * 0.35})`);
+        holeGlow.setAttribute('stroke', `rgba(245,166,35,${alpha})`);
+        if (glowT < 1) requestAnimationFrame(animGlow);
+      }
+      requestAnimationFrame(animGlow);
+    }
+
+    // Burst particles from the hole
+    const colors = ['#f5a623','#f7dc6f','#2ecc71','#ffffff','#e8941a'];
+    for (let i = 0; i < 16; i++) {
+      const p = document.createElement('div');
+      const angle = (i / 16) * Math.PI * 2;
+      const dist  = 60 + Math.random() * 50;
+      const px    = Math.cos(angle) * dist;
+      const py    = Math.sin(angle) * dist - 30;
+      const size  = 5 + Math.random() * 6;
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      const delay = Math.random() * 80;
+      p.style.cssText = `
+        position:absolute;
+        width:${size}px; height:${size}px;
+        border-radius:50%;
+        background:${color};
+        left:${boardX - size/2}px;
+        top:${boardY - size/2}px;
+        --px:${px}px; --py:${py}px;
+        animation: particleFly 0.6s ease-out ${delay}ms forwards;
+        pointer-events:none;
+      `;
+      overlay.appendChild(p);
+    }
+
+    // "HOLE IN ONE!" text
+    const txt = document.createElement('div');
+    txt.style.cssText = `
+      position:absolute;
+      left:${boardX}px; top:${boardY - 80}px;
+      transform:translate(-50%, 0);
+      font-family:'Bebas Neue',sans-serif;
+      font-size:1.8rem;
+      letter-spacing:5px;
+      color:#f5a623;
+      text-shadow: 0 0 20px rgba(245,166,35,0.8), 0 2px 8px rgba(0,0,0,0.8);
+      white-space:nowrap;
+      animation: fadeInUp 0.3s ease forwards, fadeOutUp 0.4s ease 1.1s forwards;
+      pointer-events:none;
+    `;
+    txt.textContent = 'HOLE IN ONE!';
+    overlay.appendChild(txt);
+
+    // Clean up after full animation
+    setTimeout(() => {
+      overlay.innerHTML = '';
+      overlay.classList.remove('active');
+      if (onComplete) onComplete();
+    }, 1800);
+  }
+}
+
+/* ─── SHARE PICKS ────────────────────────────────────────────── */
+function sharePicksText(name, picksMap, lockedAtSubmission) {
+  const lockedSet = new Set(lockedAtSubmission || []);
+  const RSHORT = ['R1','R2','QF','SF','Final'];
+  let lines = [`🎯 ${name}'s Bracket — Hardy Diagnostics Cornhole 2026\n`];
+
+  ST.rounds.forEach((round, ri) => {
+    const picks = [];
+    round.forEach((match, mi) => {
+      if (lockedSet.has(match.id)) return;
+      const topBye = !match.top || match.top === 'BYE';
+      const botBye = !match.bottom || match.bottom === 'BYE';
+      if (topBye && botBye) return;
+      const pickedId   = picksMap[match.id];
+      const pickedTeam = pickedId ? findTeamById(pickedId) : null;
+      if (pickedTeam) picks.push(`  Game ${mi+1}: ${pickedTeam.p1} & ${pickedTeam.p2}`);
+    });
+    if (picks.length > 0) {
+      lines.push(`${RNAMES[ri] || 'Round '+(ri+1)}:`);
+      lines = lines.concat(picks);
+    }
+  });
+
+  lines.push(`\n🏆 hdcornhole2026.com`);
+  return lines.join('\n');
+}
+
 function showSubmissionReceipt(name, picksMap, lockedAtSubmission) {
   // Build a receipt showing the user's picks grouped by round,
   // noting which rounds/games they were ineligible for.
@@ -3078,14 +3375,17 @@ function showSubmissionReceipt(name, picksMap, lockedAtSubmission) {
     }
   });
 
-  // Footer with screenshot hint
+  // Footer with share button + done
   const footer = document.createElement('div');
   footer.className = 'receipt-footer';
   footer.innerHTML = `
-    <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;color:var(--muted);letter-spacing:0.5px;margin-bottom:10px;">
-      Screenshot this to save your picks — you can't edit them after submission.
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;color:var(--muted);letter-spacing:0.5px;margin-bottom:12px;">
+      Your picks are locked in — share them or screenshot to save.
     </div>
-    <button class="receipt-save-btn" onclick="closePanel('pickPanel')">Done</button>`;
+    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;">
+      <button class="receipt-save-btn" onclick="closePanel('pickPanel')">Done</button>
+      <button class="receipt-share-btn" id="receiptShareBtn" onclick="handleSharePicks()">⬆ Share Picks</button>
+    </div>`;
   wrap.appendChild(footer);
 
   // Replace panel body content
@@ -3163,11 +3463,41 @@ async function submitPrediction() {
   if (savedId) {
     myDocId    = savedId;
     isEditMode = true;
-    // Show the submission receipt in place of the pick form
-    showSubmissionReceipt(name, { ...fullPicks }, lockedAtSubmission);
+    // Cache submission data for the share button
+    window._lastSubmission = { name, picksMap: { ...fullPicks }, lockedAtSubmission };
+    // Play cornhole animation, then show receipt
+    playCornholeAnimation(() => {
+      showSubmissionReceipt(name, { ...fullPicks }, lockedAtSubmission);
+    });
   } else {
     msgEl.className = 'pred-msg error';
     msgEl.textContent = 'Error saving. Try again.';
+  }
+}
+
+function handleSharePicks() {
+  const btn = document.getElementById('receiptShareBtn');
+  if (!window._lastSubmission) return;
+  const { name, picksMap, lockedAtSubmission } = window._lastSubmission;
+  const text = sharePicksText(name, picksMap, lockedAtSubmission);
+
+  // Try native share API first (mobile), fall back to clipboard
+  if (navigator.share) {
+    navigator.share({ title: "My Cornhole Bracket", text })
+      .catch(() => {}); // user cancelled — no-op
+  } else {
+    navigator.clipboard.writeText(text).then(() => {
+      if (btn) {
+        btn.textContent = '✓ Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = '⬆ Share Picks';
+          btn.classList.remove('copied');
+        }, 2000);
+      }
+    }).catch(() => {
+      alert(text); // last resort fallback
+    });
   }
 }
 
@@ -3321,7 +3651,7 @@ async function deletePrediction(docId, name) {
 }
 
 /* ─── WIN ANNOUNCEMENT POPUP ────────────────────────────────── */
-let _lastShownWinMatchId = null; // track which match was last announced, not just a boolean
+let _lastShownWinKey = null; // tracks "matchId:winnerId" so reverts + re-advances always re-trigger
 
 function closeWinPopup() {
   document.getElementById('winPopup').classList.remove('visible');
@@ -3381,8 +3711,11 @@ async function showWinPopup() {
   const latest = getLatestWin();
   if (!latest) return;
   // Only show if this is a new result we haven't announced yet
-  if (latest.matchId === _lastShownWinMatchId) return;
-  _lastShownWinMatchId = latest.matchId;
+  // Use matchId + winnerId as the key — if the same match is reverted and re-advanced,
+  // or a different team is set as winner, the key changes and the popup fires again.
+  const winKey = `${latest.matchId}:${latest.winner.id}`;
+  if (winKey === _lastShownWinKey) return;
+  _lastShownWinKey = winKey;
 
   const { winner, loser, roundName } = latest;
   document.getElementById('wpTeams').textContent = `${winner.p1} & ${winner.p2}`;
