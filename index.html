@@ -1435,6 +1435,113 @@ document.dispatchEvent(new Event('fbReady'));
   .lb-delete:hover { color: var(--red); background: rgba(232,69,69,0.1); }
   body.admin-unlocked .lb-delete { display: inline-flex; align-items: center; }
 
+  /* ── Rank change indicators ── */
+  .lb-rank-change {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .lb-rank-change.up   { color: var(--green); background: rgba(46,204,113,0.12); }
+  .lb-rank-change.down { color: var(--red);   background: rgba(232,69,69,0.10); }
+  .lb-rank-change.new  { color: var(--accent); background: rgba(245,166,35,0.12); }
+
+  /* ── Submission receipt ── */
+  .receipt-wrap {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+  .receipt-header {
+    text-align: center;
+    padding: 16px 0 14px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 14px;
+  }
+  .receipt-name {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.4rem;
+    letter-spacing: 3px;
+    color: var(--accent);
+    display: block;
+  }
+  .receipt-sub {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.75rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-top: 3px;
+    display: block;
+  }
+  .receipt-round-label {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 0.85rem;
+    letter-spacing: 2.5px;
+    color: var(--accent);
+    text-transform: uppercase;
+    margin: 12px 0 6px;
+  }
+  .receipt-pick-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 7px 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 5px;
+    gap: 8px;
+  }
+  .receipt-pick-game {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.68rem;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .receipt-pick-team {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: var(--text);
+    flex: 1;
+    text-align: right;
+  }
+  .receipt-locked-notice {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.72rem;
+    color: var(--muted);
+    font-style: italic;
+    text-align: center;
+    padding: 6px 0 2px;
+  }
+  .receipt-footer {
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    text-align: center;
+  }
+  .receipt-save-btn {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 7px 18px;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .receipt-save-btn:hover { background: rgba(245,166,35,0.12); }
+
 /* ─── TEAMS ─────────────────────────────────────────────────── */
 </style>
 </head>
@@ -2571,6 +2678,9 @@ let rrRound    = 0;    // current round index in round-by-round picker
 let allPreds   = [];
 let myDocId    = null; // Firestore doc ID for current user's prediction
 let isEditMode = false;
+let previousRanks = null; // null = first render (skip badges), then name → rank index
+
+const NEW_BADGE_TTL = 24 * 60 * 60 * 1000; // 24 hours in ms
 
 const RNAMES      = ['Round 1','Round 2','Quarterfinals','Semifinals','Championship'];
 const ROUND_PTS   = [1, 2, 4, 8, 16]; // points per correct pick per round
@@ -2893,6 +3003,96 @@ function isMatchLocked(matchId) {
   return !!(m && m.winner && m.winner !== 'BYE');
 }
 
+function showSubmissionReceipt(name, picksMap, lockedAtSubmission) {
+  // Build a receipt showing the user's picks grouped by round,
+  // noting which rounds/games they were ineligible for.
+  const lockedSet = new Set(lockedAtSubmission || []);
+  const panel = document.getElementById('pickPanel');
+  const body  = panel ? panel.querySelector('.panel-body') : null;
+  if (!body || !ST) return;
+
+  const wrap = document.createElement('div');
+  wrap.className = 'receipt-wrap';
+
+  // Header
+  wrap.innerHTML = `
+    <div class="receipt-header">
+      <span style="font-size:1.8rem;display:block;margin-bottom:6px;">🎯</span>
+      <span class="receipt-name">${name}</span>
+      <span class="receipt-sub">Bracket locked in · ${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+    </div>`;
+
+  const RSHORT = ['R1','R2','QF','SF','Final'];
+
+  ST.rounds.forEach((round, ri) => {
+    // Collect picks for this round
+    const rows = [];
+    round.forEach((match, mi) => {
+      const topBye = !match.top || match.top === 'BYE';
+      const botBye = !match.bottom || match.bottom === 'BYE';
+      if (topBye && botBye) return;
+
+      const wasLocked = lockedSet.has(match.id);
+      const pickedId  = picksMap[match.id];
+      const pickedTeam = pickedId ? findTeamById(pickedId) : null;
+
+      rows.push({ mi, match, wasLocked, pickedTeam });
+    });
+
+    if (rows.length === 0) return;
+
+    // Round label
+    const rLabel = document.createElement('div');
+    rLabel.className = 'receipt-round-label';
+    rLabel.textContent = RNAMES[ri] || `Round ${ri+1}`;
+    wrap.appendChild(rLabel);
+
+    rows.forEach(({ mi, match, wasLocked, pickedTeam }) => {
+      if (wasLocked) return; // skip already-played games entirely
+
+      const pickRow = document.createElement('div');
+      pickRow.className = 'receipt-pick-row';
+
+      const gameLabel = document.createElement('span');
+      gameLabel.className = 'receipt-pick-game';
+      gameLabel.textContent = `Game ${mi + 1}`;
+
+      const teamLabel = document.createElement('span');
+      teamLabel.className = 'receipt-pick-team';
+      teamLabel.textContent = pickedTeam
+        ? `${pickedTeam.p1} & ${pickedTeam.p2}`
+        : '—';
+
+      pickRow.appendChild(gameLabel);
+      pickRow.appendChild(teamLabel);
+      wrap.appendChild(pickRow);
+    });
+
+    // Show count of skipped locked games if any
+    const lockedCount = rows.filter(r => r.wasLocked).length;
+    if (lockedCount > 0) {
+      const notice = document.createElement('div');
+      notice.className = 'receipt-locked-notice';
+      notice.textContent = `+ ${lockedCount} already-played game${lockedCount > 1 ? 's' : ''} not eligible for points`;
+      wrap.appendChild(notice);
+    }
+  });
+
+  // Footer with screenshot hint
+  const footer = document.createElement('div');
+  footer.className = 'receipt-footer';
+  footer.innerHTML = `
+    <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;color:var(--muted);letter-spacing:0.5px;margin-bottom:10px;">
+      Screenshot this to save your picks — you can't edit them after submission.
+    </div>
+    <button class="receipt-save-btn" onclick="closePanel('pickPanel')">Done</button>`;
+  wrap.appendChild(footer);
+
+  // Replace panel body content
+  body.innerHTML = '';
+  body.appendChild(wrap);
+}
+
 async function submitPrediction() {
   const name  = document.getElementById('predName').value.trim();
   const msgEl = document.getElementById('predMsg');
@@ -2963,10 +3163,8 @@ async function submitPrediction() {
   if (savedId) {
     myDocId    = savedId;
     isEditMode = true;
-    renderRRRound();
-    document.getElementById('predSubmitBtn').style.display = 'none';
-    msgEl.className = 'pred-msg success';
-    msgEl.innerHTML = '✅ Bracket recorded! Your picks are locked in — good luck! 🎯';
+    // Show the submission receipt in place of the pick form
+    showSubmissionReceipt(name, { ...fullPicks }, lockedAtSubmission);
   } else {
     msgEl.className = 'pred-msg error';
     msgEl.textContent = 'Error saving. Try again.';
@@ -3028,6 +3226,7 @@ function updateLeaderboard(preds) {
   if (!lb) return;
   if (!preds || preds.length === 0) {
     lb.innerHTML = '<div class="lb-empty">No picks yet — be the first!</div>';
+    previousRanks = null;
     return;
   }
   const scored = preds.map(p => {
@@ -3042,11 +3241,37 @@ function updateLeaderboard(preds) {
     };
   }).sort((a,b) => b.score - a.score || a.submittedAt - b.submittedAt);
 
+  // Build new rank map and compute changes vs previous render
+  const newRanks = {};
+  scored.forEach((entry, i) => { newRanks[entry.name] = i; });
+
   lb.innerHTML = '';
   const medals = ['🥇','🥈','🥉'];
   scored.forEach((entry, i) => {
     const row = document.createElement('div');
     row.className = 'lb-row' + (i === 0 && entry.score > 0 ? ' lb-top' : '');
+
+    // Rank change badge
+    let changeBadge = '';
+    const now = Date.now();
+
+    // NEW badge: entry was submitted within the last 24 hours (based on Firestore submittedAt)
+    // This means anyone — including the admin — sees NEW on recently submitted entries
+    // regardless of when they opened the page.
+    if (entry.submittedAt && (now - entry.submittedAt) <= NEW_BADGE_TTL) {
+      changeBadge = `<span class="lb-rank-change new">NEW</span>`;
+    } else if (previousRanks !== null) {
+      // Rank movement badges (only after first render, and only for older entries)
+      if (entry.name in previousRanks) {
+        const prev = previousRanks[entry.name];
+        const diff = prev - i; // positive = moved up, negative = moved down
+        if (diff > 0) {
+          changeBadge = `<span class="lb-rank-change up">▲${diff}</span>`;
+        } else if (diff < 0) {
+          changeBadge = `<span class="lb-rank-change down">▼${Math.abs(diff)}</span>`;
+        }
+      }
+    }
 
     // Breakdown: show points earned per round
     const RSHORT = ['R1', 'R2', 'QF', 'SF', 'Final'];
@@ -3064,6 +3289,7 @@ function updateLeaderboard(preds) {
         <span class="lb-name">${entry.name}</span>
         ${breakdown}
       </div>
+      ${changeBadge}
       <span class="lb-score">${entry.score}pt${entry.score !== 1 ? 's' : ''}</span>`;
 
     // Delete button (only visible when admin is unlocked)
@@ -3076,6 +3302,9 @@ function updateLeaderboard(preds) {
 
     lb.appendChild(row);
   });
+
+  // Save current ranks for next comparison
+  previousRanks = newRanks;
 }
 
 async function deletePrediction(docId, name) {
