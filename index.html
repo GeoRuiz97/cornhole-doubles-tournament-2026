@@ -228,6 +228,46 @@ document.dispatchEvent(new Event('fbReady'));
   }
   .btn-reset:hover { background: var(--red); color: #fff; }
   body.admin-unlocked .btn-reset { display: inline-block; }
+  .btn-test-anim {
+    background: transparent;
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.8rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.18s;
+    white-space: nowrap;
+    display: none;
+  }
+  .btn-test-anim:hover { background: rgba(245,166,35,0.12); }
+  body.admin-unlocked .btn-test-anim { display: inline-block; }
+  /* Show-in-popup button on match cards */
+  .btn-show-popup {
+    display: none;
+    position: absolute;
+    bottom: 3px;
+    right: 4px;
+    background: rgba(245,166,35,0.12);
+    border: 1px solid rgba(245,166,35,0.35);
+    color: var(--accent);
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.58rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    padding: 2px 6px;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+  .btn-show-popup:hover { background: rgba(245,166,35,0.25); }
+  body.admin-unlocked .match-card .btn-show-popup { display: block; }
+  .match-card { position: relative; }
   .btn-export {
     background: transparent;
     border: 1px solid var(--green);
@@ -1572,6 +1612,22 @@ document.dispatchEvent(new Event('fbReady'));
     overflow: hidden;
   }
   #cornholeAnimOverlay.active { pointer-events: all; }
+  #cornholeAnimBackdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 8999;
+    background: rgba(7, 9, 14, 0);
+    backdrop-filter: blur(0px);
+    -webkit-backdrop-filter: blur(0px);
+    pointer-events: none;
+    transition: background 0.4s ease, backdrop-filter 0.4s ease;
+  }
+  #cornholeAnimBackdrop.active {
+    background: rgba(7, 9, 14, 0.82);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    pointer-events: all;
+  }
 
   @keyframes bagArc {
     0%   { transform: translate(0, 0) rotate(0deg) scale(1);   opacity: 1; }
@@ -1582,11 +1638,12 @@ document.dispatchEvent(new Event('fbReady'));
     100% { transform: translate(-180px, 0px)  rotate(-440deg) scale(0);     opacity: 0; }
   }
   @keyframes boardShake {
-    0%,100% { transform: translate(0, 0); }
-    20%     { transform: translate(-5px, 2px); }
-    40%     { transform: translate(4px, -2px); }
-    60%     { transform: translate(-3px, 3px); }
-    80%     { transform: translate(3px, -1px); }
+    0%,100% { transform: translate(0,0) scale(1); }
+    15%     { transform: translate(-6px, 3px) scale(1.02); }
+    30%     { transform: translate(5px, -3px) scale(0.99); }
+    50%     { transform: translate(-4px, 2px) scale(1.01); }
+    70%     { transform: translate(3px, -2px) scale(1.00); }
+    85%     { transform: translate(-2px, 1px) scale(1.00); }
   }
   @keyframes holePulse {
     0%   { transform: scale(1);   opacity: 0; }
@@ -1618,6 +1675,7 @@ document.dispatchEvent(new Event('fbReady'));
 <body>
 
 <!-- ── Cornhole submission animation overlay ── -->
+<div id="cornholeAnimBackdrop"></div>
 <div id="cornholeAnimOverlay"></div>
 
 <header>
@@ -1657,6 +1715,7 @@ document.dispatchEvent(new Event('fbReady'));
   <div style="display:flex;align-items:center;gap:14px;">
     <button class="btn-export" id="exportBtn" onclick="exportPredictionsPDF()">⬇ Export Picks</button>
     <button class="btn-reset" id="resetBtn" onclick="resetBracket()" disabled>↺ Reset Bracket</button>
+    <button class="btn-test-anim" onclick="playCornholeAnimation(null)" title="Preview submission animation">🎯 Test Animation</button>
     <div class="lock-area" id="lockArea">
       <button class="btn-lock" onclick="toggleLock()" title="Lock / Unlock bracket editing">
         <span id="lockIcon">
@@ -1953,11 +2012,9 @@ function findMatch(id) {
 
 function applyFirestoreState(data) {
   if (data.matchups) {
-    // New explicit-matchup format: build bracket from seed then override R1 slots
     buildBracket(data.seed);
     applyMatchupOverrides(data.matchups);
   } else {
-    // Legacy seed-only format
     buildBracket(data.seed);
   }
 
@@ -1971,6 +2028,15 @@ function applyFirestoreState(data) {
   });
 
   render();
+
+  // Show featured match popup if admin has selected one
+  if (data.featuredMatchId) {
+    _featuredMatchId = data.featuredMatchId;
+    // Small delay so the bracket renders first
+    setTimeout(() => showWinPopupForMatch(data.featuredMatchId), 800);
+  } else {
+    _featuredMatchId = null;
+  }
 }
 
 // Apply stored matchup overrides to R1
@@ -2035,12 +2101,19 @@ function getMatchups() {
   return matchups;
 }
 
+let _featuredMatchId = null; // matchId admin has chosen to display in the win popup
+
 function savePicks() {
   if (!window._fbSave) return;
   const picks = ST.rounds.flat()
     .filter(m => m.winner && m.winner !== 'BYE')
     .map(m => ({ mid: m.id, wid: m.winner.id }));
-  const data = { seed: String(window._currentSeed), picks, matchups: getMatchups() };
+  const data = {
+    seed: String(window._currentSeed),
+    picks,
+    matchups: getMatchups(),
+    featuredMatchId: _featuredMatchId || null
+  };
   _ignoreNext = true;
   window._fbSave(data);
 }
@@ -2573,6 +2646,21 @@ function render() {
       card.setAttribute('data-id', match.id);
       card.appendChild(buildSlot(match, 'top'));
       card.appendChild(buildSlot(match, 'bottom'));
+
+      // Admin-only "📢 Announce" button — show this match result in the win popup
+      if (match.winner && match.winner !== 'BYE' && match.top && match.bottom &&
+          match.top !== 'BYE' && match.bottom !== 'BYE') {
+        const announceBtn = document.createElement('button');
+        announceBtn.className = 'btn-show-popup';
+        announceBtn.textContent = '📢 Announce';
+        announceBtn.title = 'Show this result in the win popup';
+        announceBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          showWinPopupForMatch(match.id);
+        });
+        card.appendChild(announceBtn);
+      }
+
       block.appendChild(card);
 
       matchesEl.appendChild(block);
@@ -3080,8 +3168,10 @@ function isMatchLocked(matchId) {
 /* ─── CORNHOLE SUBMISSION ANIMATION ─────────────────────────── */
 function playCornholeAnimation(onComplete) {
   const overlay = document.getElementById('cornholeAnimOverlay');
+  const backdrop = document.getElementById('cornholeAnimBackdrop');
   overlay.innerHTML = '';
   overlay.classList.add('active');
+  if (backdrop) backdrop.classList.add('active');
 
   const W = window.innerWidth;
   const H = window.innerHeight;
@@ -3091,127 +3181,136 @@ function playCornholeAnimation(onComplete) {
   const startY = H * 0.78;
 
   // Board target position: center-ish of screen
-  const boardX = W * 0.42;
-  const boardY = H * 0.38;
+  const boardX = W * 0.40;
+  const boardY = H * 0.45;
 
-  // ── Draw the cornhole board (perspective/isometric view matching real board) ──
-  // Board is drawn as a 3-point perspective: wide bottom-right, narrowing to top-left.
-  // Coordinates are hand-tuned to match the reference image proportions.
-  //
-  //  Top surface corners (perspective quad):
-  //    TL: (30,  38)   TR: (220, 12)
-  //    BL: (18, 130)   BR: (230, 98)
-  //
-  //  The hole is an ellipse in the upper-left quarter of the playing surface.
-  //  Side thickness visible on the bottom and left edges.
-  //  Two angled legs visible below the bottom-left edge.
-
+  // ── Draw the cornhole board — vertical, wood-toned, site-themed ──
+  // Portrait orientation (taller than wide), no legs, face-forward.
+  // Warm brown wood surface blended with site dark navy + gold accent frame.
+  const boardW = 160, boardH = 270;
   const boardSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  boardSvg.setAttribute('width', '250');
-  boardSvg.setAttribute('height', '210');
-  boardSvg.setAttribute('viewBox', '0 0 250 210');
+  boardSvg.setAttribute('width', String(boardW));
+  boardSvg.setAttribute('height', String(boardH));
+  boardSvg.setAttribute('viewBox', '0 0 160 270');
   boardSvg.style.cssText = `
     position:absolute;
-    left:${boardX - 125}px;
-    top:${boardY - 105}px;
-    filter: drop-shadow(0 12px 32px rgba(0,0,0,0.7));
+    left:${boardX - boardW/2}px;
+    top:${boardY - boardH/2}px;
+    filter: drop-shadow(0 0 40px rgba(245,166,35,0.20)) drop-shadow(0 20px 50px rgba(0,0,0,0.9));
     transform-origin: center;
   `;
-
-  // Surface fill — light sandy wood like the image
-  // Top surface: TL(30,38) TR(220,12) BR(230,98) BL(18,130)
-  // Bottom thickness: BL(18,130)→BLb(18,148), BR(230,98)→BRb(230,116)
-  // Left thickness: TL(30,38)→TLb(30,56), BL(18,130)→BLb(18,148)
-
   boardSvg.innerHTML = `
     <defs>
-      <!-- Wood grain texture for top surface -->
-      <linearGradient id="bgSurface" x1="0%" y1="0%" x2="100%" y2="100%">
-        <stop offset="0%"   stop-color="#e8dcb0"/>
-        <stop offset="40%"  stop-color="#d4c48a"/>
-        <stop offset="100%" stop-color="#c8b878"/>
+      <!-- Wood surface: warm brown base tinted dark navy -->
+      <linearGradient id="bgWood" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%"   stop-color="#3a2812"/>
+        <stop offset="35%"  stop-color="#2e2318"/>
+        <stop offset="70%"  stop-color="#1e1c1a"/>
+        <stop offset="100%" stop-color="#161412"/>
       </linearGradient>
-      <!-- Side thickness (bottom face) — darker -->
-      <linearGradient id="bgBottom" x1="0%" y1="0%" x2="0%" y2="100%">
-        <stop offset="0%"   stop-color="#a08840"/>
-        <stop offset="100%" stop-color="#7a6230"/>
+      <!-- Navy tint overlay blended over wood -->
+      <linearGradient id="bgNavy" x1="30%" y1="0%" x2="70%" y2="100%">
+        <stop offset="0%"   stop-color="rgba(30,37,53,0.55)"/>
+        <stop offset="100%" stop-color="rgba(14,17,23,0.45)"/>
       </linearGradient>
-      <!-- Left side face -->
-      <linearGradient id="bgLeft" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%"   stop-color="#8a7232"/>
-        <stop offset="100%" stop-color="#a08840"/>
+      <!-- Gold frame gradient -->
+      <linearGradient id="bgGold" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%"   stop-color="#f7c84a"/>
+        <stop offset="50%"  stop-color="#f5a623"/>
+        <stop offset="100%" stop-color="#b86e08"/>
       </linearGradient>
-      <!-- Leg color -->
-      <linearGradient id="bgLeg" x1="0%" y1="0%" x2="100%" y2="0%">
-        <stop offset="0%"   stop-color="#7a6230"/>
-        <stop offset="100%" stop-color="#9a8040"/>
-      </linearGradient>
+      <!-- Hole depth -->
+      <radialGradient id="holeDepth" cx="38%" cy="32%" r="60%">
+        <stop offset="0%"   stop-color="#0d0f12"/>
+        <stop offset="100%" stop-color="#040507"/>
+      </radialGradient>
+      <!-- Hole glow -->
+      <radialGradient id="glowRing" cx="50%" cy="50%" r="50%">
+        <stop offset="55%"  stop-color="rgba(245,166,35,0)"/>
+        <stop offset="100%" stop-color="rgba(245,166,35,0.20)"/>
+      </radialGradient>
+      <!-- Wood grain clip -->
+      <clipPath id="boardClip">
+        <rect x="7" y="7" width="146" height="256" rx="11"/>
+      </clipPath>
     </defs>
 
-    <!-- Shadow on ground -->
-    <ellipse cx="124" cy="195" rx="90" ry="10" fill="rgba(0,0,0,0.28)"/>
+    <!-- Outer gold frame -->
+    <rect x="1" y="1" width="158" height="268" rx="14"
+          fill="url(#bgGold)"/>
 
-    <!-- LEFT leg (bottom-left of board) -->
-    <!-- Leg top attaches at ~(28,140), angles down-left -->
-    <polygon points="20,140 34,140 26,185 12,185" fill="url(#bgLeg)" stroke="#5a4820" stroke-width="1"/>
-    <!-- Leg cross-brace shadow -->
-    <line x1="16" y1="175" x2="30" y2="155" stroke="#5a4820" stroke-width="1.5" opacity="0.5"/>
+    <!-- Wood surface base -->
+    <rect x="7" y="7" width="146" height="256" rx="11"
+          fill="url(#bgWood)"/>
 
-    <!-- RIGHT leg (bottom-right of board, less visible in perspective) -->
-    <polygon points="195,120 208,116 204,178 191,182" fill="url(#bgLeg)" stroke="#5a4820" stroke-width="1"/>
+    <!-- Horizontal wood grain lines (vertical board = grain runs across width) -->
+    <g clip-path="url(#boardClip)" opacity="1">
+      <line x1="7"  y1="28"  x2="153" y2="28"  stroke="#4a3018" stroke-width="1.2" opacity="0.5"/>
+      <line x1="7"  y1="46"  x2="153" y2="46"  stroke="#5a3c20" stroke-width="0.8" opacity="0.35"/>
+      <line x1="7"  y1="62"  x2="153" y2="62"  stroke="#3e2810" stroke-width="1.4" opacity="0.45"/>
+      <line x1="7"  y1="82"  x2="153" y2="82"  stroke="#4a3018" stroke-width="0.9" opacity="0.4"/>
+      <line x1="7"  y1="102" x2="153" y2="102" stroke="#5a3c20" stroke-width="1.1" opacity="0.3"/>
+      <line x1="7"  y1="124" x2="153" y2="124" stroke="#3e2810" stroke-width="1.3" opacity="0.45"/>
+      <line x1="7"  y1="148" x2="153" y2="148" stroke="#4a3018" stroke-width="0.8" opacity="0.35"/>
+      <line x1="7"  y1="172" x2="153" y2="172" stroke="#5a3c20" stroke-width="1.2" opacity="0.4"/>
+      <line x1="7"  y1="194" x2="153" y2="194" stroke="#3e2810" stroke-width="0.9" opacity="0.3"/>
+      <line x1="7"  y1="216" x2="153" y2="216" stroke="#4a3018" stroke-width="1.1" opacity="0.4"/>
+      <line x1="7"  y1="236" x2="153" y2="236" stroke="#5a3c20" stroke-width="0.8" opacity="0.35"/>
+      <line x1="7"  y1="252" x2="153" y2="252" stroke="#3e2810" stroke-width="1.0" opacity="0.3"/>
+    </g>
 
-    <!-- Bottom thickness face (trapezoid below surface) -->
-    <!-- Surface BL(18,130) BR(230,98) → thickness down ~18px in perspective -->
-    <polygon points="18,130 230,98 230,116 18,148"
-             fill="url(#bgBottom)" stroke="#5a4820" stroke-width="1.5"/>
+    <!-- Navy theme tint blended over wood -->
+    <rect x="7" y="7" width="146" height="256" rx="11"
+          fill="url(#bgNavy)"/>
 
-    <!-- Left side face (thin strip on left edge) -->
-    <!-- TL(30,38) BL(18,130) BLb(18,148) TLb(30,56) -->
-    <polygon points="30,38 18,130 18,148 30,56"
-             fill="url(#bgLeft)" stroke="#5a4820" stroke-width="1.5"/>
+    <!-- Inner gold bevel -->
+    <rect x="12" y="12" width="136" height="246" rx="8"
+          fill="none" stroke="rgba(245,166,35,0.22)" stroke-width="1"/>
 
-    <!-- TOP SURFACE (main playing area) -->
-    <!-- TL(30,38) TR(220,12) BR(230,98) BL(18,130) -->
-    <polygon points="30,38 220,12 230,98 18,130"
-             fill="url(#bgSurface)" stroke="#5a4820" stroke-width="2"/>
+    <!-- Surface sheen top -->
+    <rect x="7" y="7" width="146" height="70" rx="11"
+          fill="rgba(255,255,255,0.03)" stroke="none"/>
 
-    <!-- Wood grain lines on surface (perspective-correct, parallel to long axis) -->
-    <!-- Lines go from left edge to right edge, slight angle -->
-    <line x1="30" y1="60"  x2="221" y2="33"  stroke="#b8a860" stroke-width="0.9" opacity="0.55"/>
-    <line x1="28" y1="82"  x2="224" y2="54"  stroke="#b8a860" stroke-width="0.9" opacity="0.55"/>
-    <line x1="26" y1="104" x2="226" y2="76"  stroke="#b8a860" stroke-width="0.9" opacity="0.55"/>
+    <!-- Corner pip accents -->
+    <circle cx="22"  cy="22"  r="3" fill="rgba(245,166,35,0.55)"/>
+    <circle cx="138" cy="22"  r="3" fill="rgba(245,166,35,0.55)"/>
+    <circle cx="22"  cy="248" r="3" fill="rgba(245,166,35,0.55)"/>
+    <circle cx="138" cy="248" r="3" fill="rgba(245,166,35,0.55)"/>
 
-    <!-- Board outline / frame edge on surface -->
-    <polygon points="34,42 216,17 227,94 22,126"
-             fill="none" stroke="#5a4820" stroke-width="1" opacity="0.4"/>
+    <!-- HARDY DIAGNOSTICS text at bottom -->
+    <text x="80" y="256" text-anchor="middle"
+          font-family="'Bebas Neue',sans-serif" font-size="10"
+          fill="rgba(245,166,35,0.32)" letter-spacing="3">HARDY DIAGNOSTICS</text>
+    <text x="80" y="266" text-anchor="middle"
+          font-family="'Bebas Neue',sans-serif" font-size="9"
+          fill="rgba(245,166,35,0.22)" letter-spacing="4">2026</text>
 
-    <!-- THE HOLE — ellipse in upper-left of playing surface -->
-    <!-- In the image the hole is roughly 25% from the left, 35% from the top of surface -->
-    <!-- Perspective-correct: center ~(88, 62), rx~18 ry~11, slight rotation -->
-    <ellipse id="animHoleGlow" cx="88" cy="63" rx="24" ry="15"
-             fill="rgba(245,166,35,0)" stroke="rgba(245,166,35,0)"
-             stroke-width="3" transform="rotate(-10, 88, 63)"/>
-    <!-- Hole dark interior -->
-    <ellipse cx="88" cy="63" rx="21" ry="13"
-             fill="#0a0c10" stroke="#3d3010" stroke-width="2"
-             transform="rotate(-10, 88, 63)"/>
-    <ellipse cx="88" cy="63" rx="17" ry="10"
-             fill="#050709" transform="rotate(-10, 88, 63)"/>
-    <!-- Hole rim highlight (light catches the top-left rim) -->
-    <ellipse cx="82" cy="58" rx="6" ry="3"
-             fill="rgba(255,255,255,0.12)" transform="rotate(-10, 82, 58)"/>
-
-    <!-- Surface sheen / light reflection on top-right -->
-    <polygon points="150,15 220,12 225,45 155,48"
-             fill="rgba(255,255,255,0.06)" stroke="none"/>
+    <!-- THE HOLE — centered horizontally, upper third -->
+    <!-- Glow ring (animated) -->
+    <circle id="animHoleGlow" cx="80" cy="90" r="36"
+            fill="rgba(245,166,35,0)" stroke="rgba(245,166,35,0)" stroke-width="5"/>
+    <!-- Ambient glow -->
+    <circle cx="80" cy="90" r="33" fill="url(#glowRing)"/>
+    <!-- Gold rim -->
+    <circle cx="80" cy="90" r="30"
+            fill="#2a1e10" stroke="url(#bgGold)" stroke-width="2.5"/>
+    <!-- Hole depth -->
+    <circle cx="80" cy="90" r="26" fill="url(#holeDepth)"/>
+    <!-- Deep black center -->
+    <circle cx="80" cy="90" r="21" fill="#030405"/>
+    <!-- Gold hairline ring -->
+    <circle cx="80" cy="90" r="27.5"
+            fill="none" stroke="rgba(245,166,35,0.22)" stroke-width="1"/>
+    <!-- Catch-light top-left -->
+    <ellipse cx="71" cy="81" rx="7" ry="4.5"
+             fill="rgba(255,255,255,0.10)" transform="rotate(-25,71,81)"/>
   `;
   overlay.appendChild(boardSvg);
 
-  // The hole center in screen coords (for particle burst target)
-  // Hole is at SVG (88,63) within a 250x210 svg placed at boardX-125, boardY-105
-  const holeSvgX = 88, holeSvgY = 63;
-  const holeScreenX = (boardX - 125) + holeSvgX;
-  const holeScreenY = (boardY - 105) + holeSvgY;
+  // Hole center in screen coords — SVG hole at (80, 90) in 160x270 board
+  const holeSvgX = 80, holeSvgY = 90;
+  const holeScreenX = (boardX - boardW/2) + holeSvgX;
+  const holeScreenY = (boardY - boardH/2) + holeSvgY;
 
   // ── Draw the bag ──
   const bagSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -3245,8 +3344,8 @@ function playCornholeAnimation(onComplete) {
   const targetY = holeScreenY;
 
   // Arc control point (for cubic bezier feel via lerp)
-  const ctrlX = (startX + targetX) / 2 - 60;
-  const ctrlY = Math.min(startY, targetY) - 260;
+  const ctrlX = (startX + targetX) / 2 - 50;
+  const ctrlY = Math.min(startY, targetY) - 250;
 
   function lerp(a, b, t) { return a + (b - a) * t; }
   function easeInCubic(t) { return t * t * t; }
@@ -3335,28 +3434,34 @@ function playCornholeAnimation(onComplete) {
       overlay.appendChild(p);
     }
 
-    // "HOLE IN ONE!" text — appears above the hole
+    // "HOLE IN ONE!" text — big, above the board entirely
+    const boardTopY = boardY - boardH / 2; // top edge of board in screen coords
     const txt = document.createElement('div');
     txt.style.cssText = `
       position:absolute;
-      left:${holeScreenX}px; top:${holeScreenY - 80}px;
+      left:${boardX}px;
+      top:${boardTopY - 70}px;
       transform:translate(-50%, 0);
       font-family:'Bebas Neue',sans-serif;
-      font-size:1.8rem;
-      letter-spacing:5px;
+      font-size:3.2rem;
+      letter-spacing:7px;
       color:#f5a623;
-      text-shadow: 0 0 20px rgba(245,166,35,0.8), 0 2px 8px rgba(0,0,0,0.8);
+      text-shadow:
+        0 0 30px rgba(245,166,35,1),
+        0 0 60px rgba(245,166,35,0.5),
+        0 3px 12px rgba(0,0,0,0.9);
       white-space:nowrap;
       animation: fadeInUp 0.3s ease forwards, fadeOutUp 0.4s ease 1.1s forwards;
       pointer-events:none;
     `;
-    txt.textContent = 'HOLE IN ONE!';
+    txt.textContent = '🎯 HOLE IN ONE!';
     overlay.appendChild(txt);
 
     // Clean up after full animation
     setTimeout(() => {
       overlay.innerHTML = '';
       overlay.classList.remove('active');
+      if (backdrop) backdrop.classList.remove('active');
       if (onComplete) onComplete();
     }, 1800);
   }
@@ -3390,8 +3495,6 @@ function sharePicksText(name, picksMap, lockedAtSubmission) {
 }
 
 function showSubmissionReceipt(name, picksMap, lockedAtSubmission) {
-  // Build a receipt showing the user's picks grouped by round,
-  // noting which rounds/games they were ineligible for.
   const lockedSet = new Set(lockedAtSubmission || []);
   const panel = document.getElementById('pickPanel');
   const body  = panel ? panel.querySelector('.panel-body') : null;
@@ -3401,41 +3504,49 @@ function showSubmissionReceipt(name, picksMap, lockedAtSubmission) {
   wrap.className = 'receipt-wrap';
 
   // Header
+  const ts = new Date().toLocaleDateString('en-US', { month:'short', day:'numeric', hour:'numeric', minute:'2-digit' });
   wrap.innerHTML = `
     <div class="receipt-header">
       <span style="font-size:1.8rem;display:block;margin-bottom:6px;">🎯</span>
       <span class="receipt-name">${name}</span>
-      <span class="receipt-sub">Bracket locked in · ${new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</span>
+      <span class="receipt-sub">Bracket locked in · ${ts}</span>
     </div>`;
 
-  const RSHORT = ['R1','R2','QF','SF','Final'];
-
+  // Build a lookup: matchId → { roundIndex, matchIndex } so we can group by round
+  const matchMeta = {};
   ST.rounds.forEach((round, ri) => {
-    // Collect picks for this round
-    const rows = [];
-    round.forEach((match, mi) => {
-      const topBye = !match.top || match.top === 'BYE';
-      const botBye = !match.bottom || match.bottom === 'BYE';
-      if (topBye && botBye) return;
+    round.forEach((match, mi) => { matchMeta[match.id] = { ri, mi, match }; });
+  });
 
-      const wasLocked = lockedSet.has(match.id);
-      const pickedId  = picksMap[match.id];
-      const pickedTeam = pickedId ? findTeamById(pickedId) : null;
+  // Group the user's actual picks by round.
+  // A pick counts as "user-made" if:
+  //   - picksMap has an entry for this matchId, AND
+  //   - the match was NOT locked at submission time (locked = auto-filled, not chosen by user)
+  const byRound = {}; // ri → [ { mi, match, pickedTeam } ]
 
-      rows.push({ mi, match, wasLocked, pickedTeam });
-    });
+  Object.entries(picksMap).forEach(([matchId, pickedId]) => {
+    if (lockedSet.has(matchId)) return; // locked at submission — user didn't pick this
+    const meta = matchMeta[matchId];
+    if (!meta) return; // match no longer in bracket (shouldn't happen)
+    const pickedTeam = findTeamById(pickedId);
+    if (!byRound[meta.ri]) byRound[meta.ri] = [];
+    byRound[meta.ri].push({ mi: meta.mi, match: meta.match, pickedTeam });
+  });
 
+  let totalShown = 0;
+
+  // Render rounds in order
+  const roundIndices = Object.keys(byRound).map(Number).sort((a, b) => a - b);
+  roundIndices.forEach(ri => {
+    const rows = byRound[ri].sort((a, b) => a.mi - b.mi); // sort by game number within round
     if (rows.length === 0) return;
 
-    // Round label
     const rLabel = document.createElement('div');
     rLabel.className = 'receipt-round-label';
-    rLabel.textContent = RNAMES[ri] || `Round ${ri+1}`;
+    rLabel.textContent = RNAMES[ri] || `Round ${ri + 1}`;
     wrap.appendChild(rLabel);
 
-    rows.forEach(({ mi, match, wasLocked, pickedTeam }) => {
-      if (wasLocked) return; // skip already-played games entirely
-
+    rows.forEach(({ mi, match, pickedTeam }) => {
       const pickRow = document.createElement('div');
       pickRow.className = 'receipt-pick-row';
 
@@ -3452,19 +3563,37 @@ function showSubmissionReceipt(name, picksMap, lockedAtSubmission) {
       pickRow.appendChild(gameLabel);
       pickRow.appendChild(teamLabel);
       wrap.appendChild(pickRow);
+      totalShown++;
     });
-
-    // Show count of skipped locked games if any
-    const lockedCount = rows.filter(r => r.wasLocked).length;
-    if (lockedCount > 0) {
-      const notice = document.createElement('div');
-      notice.className = 'receipt-locked-notice';
-      notice.textContent = `+ ${lockedCount} already-played game${lockedCount > 1 ? 's' : ''} not eligible for points`;
-      wrap.appendChild(notice);
-    }
   });
 
-  // Footer with share button + done
+  // Good Luck message
+  const glMsg = document.createElement('div');
+  glMsg.style.cssText = `
+    margin: 22px 0 4px;
+    text-align: center;
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 1.7rem;
+    letter-spacing: 5px;
+    color: var(--accent);
+    text-shadow: 0 0 18px rgba(245,166,35,0.45);
+  `;
+  glMsg.textContent = '🏆 Good Luck!';
+  wrap.appendChild(glMsg);
+
+  const glSub = document.createElement('div');
+  glSub.style.cssText = `
+    text-align: center;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.82rem;
+    color: var(--muted);
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+  `;
+  glSub.textContent = `${totalShown} pick${totalShown !== 1 ? 's' : ''} submitted — may the best bags win!`;
+  wrap.appendChild(glSub);
+
+  // Footer
   const footer = document.createElement('div');
   footer.className = 'receipt-footer';
   footer.innerHTML = `
@@ -3477,7 +3606,6 @@ function showSubmissionReceipt(name, picksMap, lockedAtSubmission) {
     </div>`;
   wrap.appendChild(footer);
 
-  // Replace panel body content
   body.innerHTML = '';
   body.appendChild(wrap);
 }
@@ -3800,27 +3928,40 @@ async function generateWinMessage(winner, loser, roundName) {
   }
 }
 
-async function showWinPopup() {
-  const latest = getLatestWin();
-  if (!latest) return;
-  // Only show if this is a new result we haven't announced yet
-  // Use matchId + winnerId as the key — if the same match is reverted and re-advanced,
-  // or a different team is set as winner, the key changes and the popup fires again.
-  const winKey = `${latest.matchId}:${latest.winner.id}`;
-  if (winKey === _lastShownWinKey) return;
-  _lastShownWinKey = winKey;
+// Show the win popup for a specific match (called by admin's 📢 Announce button)
+// Also persists the selection to Firebase so everyone sees it on load.
+async function showWinPopupForMatch(matchId) {
+  if (!ST) return;
+  let foundMatch = null, foundRi = -1;
+  ST.rounds.forEach((round, ri) => {
+    round.forEach(m => { if (m.id === matchId) { foundMatch = m; foundRi = ri; } });
+  });
+  if (!foundMatch || !foundMatch.winner || foundMatch.winner === 'BYE') return;
 
-  const { winner, loser, roundName } = latest;
+  const winner = foundMatch.winner;
+  const loser  = winner.id === foundMatch.top?.id ? foundMatch.bottom : foundMatch.top;
+  const roundName = RNAMES[foundRi] || `Round ${foundRi + 1}`;
+
+  // Persist selection so all viewers see this match on load
+  if (isUnlocked && _featuredMatchId !== matchId) {
+    _featuredMatchId = matchId;
+    savePicks(); // saves featuredMatchId along with bracket state
+  }
+
+  await _displayWinPopup(winner, loser, roundName);
+}
+
+// Core display logic shared by both paths
+async function _displayWinPopup(winner, loser, roundName) {
   document.getElementById('wpTeams').textContent = `${winner.p1} & ${winner.p2}`;
   document.getElementById('wpVs').textContent = `defeated ${loser.p1} & ${loser.p2}`;
   document.getElementById('wpRound').textContent = roundName;
   document.getElementById('wpMsg').textContent = 'Generating match recap...';
   document.getElementById('wpMsg').className = 'win-popup-msg loading';
 
-  // Show popup, re-trigger animation by removing then adding .animate class
   const card = document.querySelector('.win-popup-card');
   card.classList.remove('animate');
-  void card.offsetWidth; // force reflow so animation restarts
+  void card.offsetWidth;
   card.classList.add('animate');
   document.getElementById('winPopup').classList.add('visible');
 
@@ -4412,8 +4553,6 @@ function initApp(firestoreData) {
     });
   }
 
-  // ── Show win popup once per session after a short delay ──
-  setTimeout(() => showWinPopup(), 1200);
 }
 
 // Wait for Firebase to be ready, then load state + schedules before first render
