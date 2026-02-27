@@ -2459,6 +2459,7 @@ function clickSlot(matchId, slot) {
     render();
   } else {
     m.winner = team;
+    m.decidedAt = Date.now(); // timestamp so getLatestWin can find the most recently decided match
     propagate(matchId, team);
     savePicks();
     render();
@@ -3747,19 +3748,23 @@ function closeWinPopup() {
 
 function getLatestWin() {
   if (!ST) return null;
-  // Walk rounds in reverse to find the most recent completed match
-  for (let ri = ST.rounds.length - 1; ri >= 0; ri--) {
-    const round = ST.rounds[ri];
-    for (let mi = round.length - 1; mi >= 0; mi--) {
-      const m = round[mi];
+  // Collect ALL completed matches, then pick the one decided most recently.
+  // This uses the decidedAt timestamp stamped in clickSlot, so it always
+  // reflects the last result you manually entered — not the last one by round/index order.
+  let best = null;
+  ST.rounds.forEach((round, ri) => {
+    round.forEach(m => {
       if (m.winner && m.winner !== 'BYE' && m.top && m.bottom &&
           m.top !== 'BYE' && m.bottom !== 'BYE') {
-        const loser = m.winner.id === m.top.id ? m.bottom : m.top;
-        return { winner: m.winner, loser, roundName: RNAMES[ri] || `Round ${ri+1}`, matchId: m.id };
+        const ts = m.decidedAt || 0;
+        if (!best || ts > best.ts) {
+          const loser = m.winner.id === m.top.id ? m.bottom : m.top;
+          best = { winner: m.winner, loser, roundName: RNAMES[ri] || `Round ${ri+1}`, matchId: m.id, ts };
+        }
       }
-    }
-  }
-  return null;
+    });
+  });
+  return best;
 }
 
 const WIN_TEMPLATES = [
