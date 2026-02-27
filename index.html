@@ -1511,7 +1511,7 @@ document.dispatchEvent(new Event('fbReady'));
     <span class="fab-label">Leaderboard</span>
     <button class="fab fab-lb" onclick="togglePanel('lbPanel')" title="Leaderboard">🏅</button>
   </div>
-  <div style="display:flex;flex-direction:column;align-items:center;gap:4px;">
+  <div style="display:none;flex-direction:column;align-items:center;gap:4px;">
     <span class="fab-label">Make a Pick</span>
     <button class="fab fab-pick" onclick="togglePanel('pickPanel')" title="Make your pick">🎯</button>
   </div>
@@ -1528,14 +1528,10 @@ document.dispatchEvent(new Event('fbReady'));
     <button class="panel-close" onclick="closePanel('pickPanel')">✕</button>
   </div>
   <div class="panel-body">
-    <!-- Name -->
-    <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" />
-    <!-- Scoring key -->
-    <div id="scoringKey" style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px;">
-      <span style="font-family:'Barlow Condensed',sans-serif;font-size:0.7rem;letter-spacing:1px;color:var(--muted);width:100%;text-transform:uppercase;">Points per correct pick:</span>
-    </div>
-    <!-- Round-by-round picker (always shown) -->
-    <div class="rr-picker-wrap">
+    <!-- Hidden elements kept for JS compatibility -->
+    <input class="pred-input" id="predName" type="text" placeholder="Enter your name" maxlength="40" style="display:none;" />
+    <div id="scoringKey" style="display:none;"></div>
+    <div class="rr-picker-wrap" style="display:none;">
       <div class="rr-progress" id="rrProgress"></div>
       <div class="rr-round-label" id="rrRoundLabel"></div>
       <div class="rr-round-sub"  id="rrRoundSub"></div>
@@ -1545,8 +1541,23 @@ document.dispatchEvent(new Event('fbReady'));
         <button class="rr-nav-btn next" id="rrNextBtn" onclick="rrNav(1)">Next →</button>
       </div>
     </div>
-    <button class="pred-btn" id="predSubmitBtn" onclick="submitPrediction()" style="margin-top:14px;">Submit Bracket</button>
+    <button class="pred-btn" id="predSubmitBtn" onclick="submitPrediction()" style="display:none;">Submit Bracket</button>
     <div class="pred-msg" id="predMsg"></div>
+    <!-- Picks Closed Notice -->
+    <div style="
+      text-align:center;
+      padding:40px 20px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:16px;
+    ">
+      <div style="font-size:3rem;line-height:1;">🔒</div>
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:4px;color:var(--accent);">Picks Are Closed</div>
+      <div style="font-family:'Barlow Condensed',sans-serif;font-size:0.95rem;color:var(--muted);letter-spacing:1px;line-height:1.5;">
+        Bracket submissions are no longer being accepted.<br>Check the leaderboard to see how everyone is doing!
+      </div>
+    </div>
   </div>
 </div>
 
