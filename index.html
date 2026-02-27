@@ -1582,11 +1582,11 @@ document.dispatchEvent(new Event('fbReady'));
     100% { transform: translate(-180px, 0px)  rotate(-440deg) scale(0);     opacity: 0; }
   }
   @keyframes boardShake {
-    0%,100% { transform: translateX(0) rotate(-8deg); }
-    20%     { transform: translateX(-4px) rotate(-9deg); }
-    40%     { transform: translateX(4px) rotate(-7deg); }
-    60%     { transform: translateX(-3px) rotate(-8.5deg); }
-    80%     { transform: translateX(2px) rotate(-7.5deg); }
+    0%,100% { transform: translate(0, 0); }
+    20%     { transform: translate(-5px, 2px); }
+    40%     { transform: translate(4px, -2px); }
+    60%     { transform: translate(-3px, 3px); }
+    80%     { transform: translate(3px, -1px); }
   }
   @keyframes holePulse {
     0%   { transform: scale(1);   opacity: 0; }
@@ -3093,41 +3093,124 @@ function playCornholeAnimation(onComplete) {
   const boardX = W * 0.42;
   const boardY = H * 0.38;
 
-  // ── Draw the cornhole board ──
+  // ── Draw the cornhole board (perspective/isometric view matching real board) ──
+  // Board is drawn as a 3-point perspective: wide bottom-right, narrowing to top-left.
+  // Coordinates are hand-tuned to match the reference image proportions.
+  //
+  //  Top surface corners (perspective quad):
+  //    TL: (30,  38)   TR: (220, 12)
+  //    BL: (18, 130)   BR: (230, 98)
+  //
+  //  The hole is an ellipse in the upper-left quarter of the playing surface.
+  //  Side thickness visible on the bottom and left edges.
+  //  Two angled legs visible below the bottom-left edge.
+
   const boardSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  boardSvg.setAttribute('width', '180');
-  boardSvg.setAttribute('height', '130');
+  boardSvg.setAttribute('width', '250');
+  boardSvg.setAttribute('height', '210');
+  boardSvg.setAttribute('viewBox', '0 0 250 210');
   boardSvg.style.cssText = `
     position:absolute;
-    left:${boardX - 90}px;
-    top:${boardY - 65}px;
-    filter: drop-shadow(0 8px 24px rgba(0,0,0,0.6));
-    transform: rotate(-8deg);
+    left:${boardX - 125}px;
+    top:${boardY - 105}px;
+    filter: drop-shadow(0 12px 32px rgba(0,0,0,0.7));
     transform-origin: center;
   `;
+
+  // Surface fill — light sandy wood like the image
+  // Top surface: TL(30,38) TR(220,12) BR(230,98) BL(18,130)
+  // Bottom thickness: BL(18,130)→BLb(18,148), BR(230,98)→BRb(230,116)
+  // Left thickness: TL(30,38)→TLb(30,56), BL(18,130)→BLb(18,148)
+
   boardSvg.innerHTML = `
-    <!-- Board body -->
-    <rect x="10" y="10" width="160" height="110" rx="12" fill="#8B4513" stroke="#5C2E00" stroke-width="3"/>
-    <rect x="18" y="18" width="144" height="94" rx="8" fill="#A0522D" stroke="#6B3310" stroke-width="1.5"/>
-    <!-- Wood grain lines -->
-    <line x1="18" y1="35" x2="162" y2="35" stroke="#7A3B1E" stroke-width="0.8" opacity="0.5"/>
-    <line x1="18" y1="55" x2="162" y2="55" stroke="#7A3B1E" stroke-width="0.8" opacity="0.5"/>
-    <line x1="18" y1="75" x2="162" y2="75" stroke="#7A3B1E" stroke-width="0.8" opacity="0.5"/>
-    <line x1="18" y1="95" x2="162" y2="95" stroke="#7A3B1E" stroke-width="0.8" opacity="0.5"/>
-    <!-- The hole -->
-    <circle id="animHoleGlow" cx="90" cy="62" r="22" fill="rgba(245,166,35,0)" stroke="rgba(245,166,35,0)" stroke-width="3"/>
-    <circle cx="90" cy="62" r="20" fill="#0a0c10" stroke="#3d2200" stroke-width="2.5"/>
-    <circle cx="90" cy="62" r="16" fill="#050709"/>
-    <!-- Hole rim shine -->
-    <ellipse cx="84" cy="57" rx="5" ry="3" fill="rgba(255,255,255,0.08)" transform="rotate(-20,84,57)"/>
-    <!-- Score markings -->
-    <text x="90" y="105" text-anchor="middle" font-family="'Bebas Neue',sans-serif" font-size="11"
-          fill="rgba(255,255,255,0.5)" letter-spacing="2">CORNHOLE</text>
-    <!-- Legs -->
-    <line x1="25" y1="118" x2="20" y2="128" stroke="#5C2E00" stroke-width="5" stroke-linecap="round"/>
-    <line x1="155" y1="118" x2="160" y2="128" stroke="#5C2E00" stroke-width="5" stroke-linecap="round"/>
+    <defs>
+      <!-- Wood grain texture for top surface -->
+      <linearGradient id="bgSurface" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%"   stop-color="#e8dcb0"/>
+        <stop offset="40%"  stop-color="#d4c48a"/>
+        <stop offset="100%" stop-color="#c8b878"/>
+      </linearGradient>
+      <!-- Side thickness (bottom face) — darker -->
+      <linearGradient id="bgBottom" x1="0%" y1="0%" x2="0%" y2="100%">
+        <stop offset="0%"   stop-color="#a08840"/>
+        <stop offset="100%" stop-color="#7a6230"/>
+      </linearGradient>
+      <!-- Left side face -->
+      <linearGradient id="bgLeft" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%"   stop-color="#8a7232"/>
+        <stop offset="100%" stop-color="#a08840"/>
+      </linearGradient>
+      <!-- Leg color -->
+      <linearGradient id="bgLeg" x1="0%" y1="0%" x2="100%" y2="0%">
+        <stop offset="0%"   stop-color="#7a6230"/>
+        <stop offset="100%" stop-color="#9a8040"/>
+      </linearGradient>
+    </defs>
+
+    <!-- Shadow on ground -->
+    <ellipse cx="124" cy="195" rx="90" ry="10" fill="rgba(0,0,0,0.28)"/>
+
+    <!-- LEFT leg (bottom-left of board) -->
+    <!-- Leg top attaches at ~(28,140), angles down-left -->
+    <polygon points="20,140 34,140 26,185 12,185" fill="url(#bgLeg)" stroke="#5a4820" stroke-width="1"/>
+    <!-- Leg cross-brace shadow -->
+    <line x1="16" y1="175" x2="30" y2="155" stroke="#5a4820" stroke-width="1.5" opacity="0.5"/>
+
+    <!-- RIGHT leg (bottom-right of board, less visible in perspective) -->
+    <polygon points="195,120 208,116 204,178 191,182" fill="url(#bgLeg)" stroke="#5a4820" stroke-width="1"/>
+
+    <!-- Bottom thickness face (trapezoid below surface) -->
+    <!-- Surface BL(18,130) BR(230,98) → thickness down ~18px in perspective -->
+    <polygon points="18,130 230,98 230,116 18,148"
+             fill="url(#bgBottom)" stroke="#5a4820" stroke-width="1.5"/>
+
+    <!-- Left side face (thin strip on left edge) -->
+    <!-- TL(30,38) BL(18,130) BLb(18,148) TLb(30,56) -->
+    <polygon points="30,38 18,130 18,148 30,56"
+             fill="url(#bgLeft)" stroke="#5a4820" stroke-width="1.5"/>
+
+    <!-- TOP SURFACE (main playing area) -->
+    <!-- TL(30,38) TR(220,12) BR(230,98) BL(18,130) -->
+    <polygon points="30,38 220,12 230,98 18,130"
+             fill="url(#bgSurface)" stroke="#5a4820" stroke-width="2"/>
+
+    <!-- Wood grain lines on surface (perspective-correct, parallel to long axis) -->
+    <!-- Lines go from left edge to right edge, slight angle -->
+    <line x1="30" y1="60"  x2="221" y2="33"  stroke="#b8a860" stroke-width="0.9" opacity="0.55"/>
+    <line x1="28" y1="82"  x2="224" y2="54"  stroke="#b8a860" stroke-width="0.9" opacity="0.55"/>
+    <line x1="26" y1="104" x2="226" y2="76"  stroke="#b8a860" stroke-width="0.9" opacity="0.55"/>
+
+    <!-- Board outline / frame edge on surface -->
+    <polygon points="34,42 216,17 227,94 22,126"
+             fill="none" stroke="#5a4820" stroke-width="1" opacity="0.4"/>
+
+    <!-- THE HOLE — ellipse in upper-left of playing surface -->
+    <!-- In the image the hole is roughly 25% from the left, 35% from the top of surface -->
+    <!-- Perspective-correct: center ~(88, 62), rx~18 ry~11, slight rotation -->
+    <ellipse id="animHoleGlow" cx="88" cy="63" rx="24" ry="15"
+             fill="rgba(245,166,35,0)" stroke="rgba(245,166,35,0)"
+             stroke-width="3" transform="rotate(-10, 88, 63)"/>
+    <!-- Hole dark interior -->
+    <ellipse cx="88" cy="63" rx="21" ry="13"
+             fill="#0a0c10" stroke="#3d3010" stroke-width="2"
+             transform="rotate(-10, 88, 63)"/>
+    <ellipse cx="88" cy="63" rx="17" ry="10"
+             fill="#050709" transform="rotate(-10, 88, 63)"/>
+    <!-- Hole rim highlight (light catches the top-left rim) -->
+    <ellipse cx="82" cy="58" rx="6" ry="3"
+             fill="rgba(255,255,255,0.12)" transform="rotate(-10, 82, 58)"/>
+
+    <!-- Surface sheen / light reflection on top-right -->
+    <polygon points="150,15 220,12 225,45 155,48"
+             fill="rgba(255,255,255,0.06)" stroke="none"/>
   `;
   overlay.appendChild(boardSvg);
+
+  // The hole center in screen coords (for particle burst target)
+  // Hole is at SVG (88,63) within a 250x210 svg placed at boardX-125, boardY-105
+  const holeSvgX = 88, holeSvgY = 63;
+  const holeScreenX = (boardX - 125) + holeSvgX;
+  const holeScreenY = (boardY - 105) + holeSvgY;
 
   // ── Draw the bag ──
   const bagSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -3156,9 +3239,13 @@ function playCornholeAnimation(onComplete) {
   const duration = 900; // ms
   const startTime = performance.now();
 
+  // Target is the actual hole position, not board center
+  const targetX = holeScreenX;
+  const targetY = holeScreenY;
+
   // Arc control point (for cubic bezier feel via lerp)
-  const ctrlX = (startX + boardX) / 2 - 80;
-  const ctrlY = Math.min(startY, boardY) - 280;
+  const ctrlX = (startX + targetX) / 2 - 60;
+  const ctrlY = Math.min(startY, targetY) - 260;
 
   function lerp(a, b, t) { return a + (b - a) * t; }
   function easeInCubic(t) { return t * t * t; }
@@ -3173,9 +3260,9 @@ function playCornholeAnimation(onComplete) {
       ? easeInCubic(rawT * 2) * 0.5
       : 0.5 + easeOutCubic((rawT - 0.5) * 2) * 0.5;
 
-    // Quadratic bezier: start → ctrl → end
-    const bx = lerp(lerp(startX, ctrlX, t), lerp(ctrlX, boardX, t), t);
-    const by = lerp(lerp(startY, ctrlY, t), lerp(ctrlY, boardY, t), t);
+    // Quadratic bezier: start → ctrl → hole
+    const bx = lerp(lerp(startX, ctrlX, t), lerp(ctrlX, targetX, t), t);
+    const by = lerp(lerp(startY, ctrlY, t), lerp(ctrlY, targetY, t), t);
 
     // Spin: 2 full rotations
     const angle = t * 720;
@@ -3200,6 +3287,7 @@ function playCornholeAnimation(onComplete) {
   function triggerHoleMadeEffects() {
     // Board shake
     boardSvg.style.animation = 'boardShake 0.35s ease';
+    boardSvg.addEventListener('animationend', () => { boardSvg.style.animation = ''; }, { once: true });
 
     // Hole glow pulse
     const holeGlow = boardSvg.querySelector('#animHoleGlow');
@@ -3237,8 +3325,8 @@ function playCornholeAnimation(onComplete) {
         width:${size}px; height:${size}px;
         border-radius:50%;
         background:${color};
-        left:${boardX - size/2}px;
-        top:${boardY - size/2}px;
+        left:${holeScreenX - size/2}px;
+        top:${holeScreenY - size/2}px;
         --px:${px}px; --py:${py}px;
         animation: particleFly 0.6s ease-out ${delay}ms forwards;
         pointer-events:none;
@@ -3246,11 +3334,11 @@ function playCornholeAnimation(onComplete) {
       overlay.appendChild(p);
     }
 
-    // "HOLE IN ONE!" text
+    // "HOLE IN ONE!" text — appears above the hole
     const txt = document.createElement('div');
     txt.style.cssText = `
       position:absolute;
-      left:${boardX}px; top:${boardY - 80}px;
+      left:${holeScreenX}px; top:${holeScreenY - 80}px;
       transform:translate(-50%, 0);
       font-family:'Bebas Neue',sans-serif;
       font-size:1.8rem;
