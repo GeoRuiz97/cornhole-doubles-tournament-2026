@@ -119,6 +119,26 @@ window._fbGetSchedules = async function() {
   } catch(e) { return {}; }
 };
 
+// ── Match Scores ──
+const SCORES_DOC = doc(db, 'bracket', 'scores');
+
+window._fbSaveScores = async function(scores) {
+  try { await setDoc(SCORES_DOC, { scores }); return true; } catch(e) { console.error('Score save error:', e); return false; }
+};
+
+window._fbListenScores = function(callback) {
+  onSnapshot(SCORES_DOC, snap => {
+    callback(snap.exists() ? (snap.data().scores || {}) : {});
+  });
+};
+
+window._fbGetScores = async function() {
+  try {
+    const snap = await getDoc(SCORES_DOC);
+    return snap.exists() ? (snap.data().scores || {}) : {};
+  } catch(e) { return {}; }
+};
+
 // Signal that Firebase is ready
 window._fbReady = true;
 document.dispatchEvent(new Event('fbReady'));
@@ -542,6 +562,53 @@ document.dispatchEvent(new Event('fbReady'));
   }
   .btn-schedule:hover { border-color: var(--accent); color: var(--accent); background: rgba(245,166,35,0.05); }
   body.admin-unlocked .btn-schedule { display: block; }
+
+  /* Score display above match card */
+  .match-score-display {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    margin-bottom: 4px;
+  }
+  .match-score-num {
+    font-family: 'Bebas Neue', sans-serif;
+    font-size: 2rem;
+    letter-spacing: 1px;
+    color: var(--muted);
+    line-height: 1;
+  }
+  .match-score-num.score-winner {
+    color: var(--green);
+  }
+  .match-score-sep {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+  }
+
+  /* Add/Edit Score button — admin only */
+  .btn-score {
+    display: none;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 0.58rem;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    background: none;
+    border: 1px dashed rgba(46,204,113,0.3);
+    color: rgba(46,204,113,0.55);
+    border-radius: 3px;
+    padding: 2px 6px;
+    cursor: pointer;
+    margin: 2px auto 4px;
+    transition: all 0.15s;
+    width: 100%;
+  }
+  .btn-score:hover { border-color: var(--green); color: var(--green); background: rgba(46,204,113,0.06); }
+  body.admin-unlocked .btn-score { display: block; }
 
   /* Edit Matchup button */
   .btn-edit-matchup {
@@ -2628,6 +2695,35 @@ function render() {
         block.appendChild(schedBtn);
       }
 
+      // Score display (visible to all) + admin "Add/Edit Score" button
+      const score = matchScores[match.id];
+      if (score) {
+        const topTeam    = (match.top    && match.top    !== 'BYE') ? match.top    : null;
+        const botTeam    = (match.bottom && match.bottom !== 'BYE') ? match.bottom : null;
+        const topScore   = score.top  ?? '';
+        const botScore   = score.bot  ?? '';
+        const topWins    = topScore !== '' && botScore !== '' && Number(topScore) > Number(botScore);
+        const botWins    = topScore !== '' && botScore !== '' && Number(botScore) > Number(topScore);
+        const scoreEl    = document.createElement('div');
+        scoreEl.className = 'match-score-display';
+        scoreEl.innerHTML = `
+          <span class="match-score-num ${topWins ? 'score-winner' : ''}">${topScore}</span>
+          <span class="match-score-sep">–</span>
+          <span class="match-score-num ${botWins ? 'score-winner' : ''}">${botScore}</span>`;
+        block.appendChild(scoreEl);
+      }
+      // Admin-only "Add/Edit Score" button — for played matches only
+      if (isPlayed) {
+        const scoreBtn = document.createElement('button');
+        scoreBtn.className = 'btn-score';
+        scoreBtn.textContent = score ? '✏ Edit Score' : '+ Add Score';
+        scoreBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openScoreEditor(match.id, score);
+        });
+        block.appendChild(scoreBtn);
+      }
+
       // Admin-only "Edit Matchup" button — only on R1 matches
       if (ri === 0) {
         const editBtn = document.createElement('button');
@@ -2836,6 +2932,7 @@ function closePanel(id) {
 /* ─── PREDICTIONS & LEADERBOARD ─────────────────────────────── */
 let fullPicks      = {};   // matchId → teamId
 let matchSchedules = {}; // matchId → { date, time } strings
+let matchScores    = {}; // matchId → { top, bot } score strings
 let rrRound    = 0;    // current round index in round-by-round picker
 let allPreds   = [];
 let myDocId    = null; // Firestore doc ID for current user's prediction
@@ -4013,6 +4110,60 @@ async function clearSchedule() {
   render();
 }
 
+/* ─── SCORE EDITOR ──────────────────────────────────────────── */
+let _scoreEditMatchId = null;
+
+function openScoreEditor(matchId, current) {
+  if (!isUnlocked) return;
+  _scoreEditMatchId = matchId;
+  const m = findMatch(matchId);
+  const topLabel = (m && m.top    && m.top    !== 'BYE') ? m.top.label    : 'Top Team';
+  const botLabel = (m && m.bottom && m.bottom !== 'BYE') ? m.bottom.label : 'Bottom Team';
+  document.getElementById('scoreTopLabel').textContent = topLabel;
+  document.getElementById('scoreBotLabel').textContent = botLabel;
+  document.getElementById('scoreTopInput').value = current?.top ?? '';
+  document.getElementById('scoreBotInput').value = current?.bot ?? '';
+  const modal = document.getElementById('scoreModal');
+  modal.style.display = 'flex';
+  document.getElementById('scoreTopInput').focus();
+}
+
+function closeScoreModal() {
+  document.getElementById('scoreModal').style.display = 'none';
+  _scoreEditMatchId = null;
+}
+
+async function saveScore() {
+  const topVal = document.getElementById('scoreTopInput').value.trim();
+  const botVal = document.getElementById('scoreBotInput').value.trim();
+  const topInp = document.getElementById('scoreTopInput');
+  const botInp = document.getElementById('scoreBotInput');
+  topInp.style.borderColor = '';
+  botInp.style.borderColor = '';
+  if (topVal === '' || botVal === '') {
+    if (topVal === '') topInp.style.borderColor = 'var(--red)';
+    if (botVal === '') botInp.style.borderColor = 'var(--red)';
+    return;
+  }
+  if (!_scoreEditMatchId) return;
+  matchScores[_scoreEditMatchId] = { top: topVal, bot: botVal };
+  const saved = await window._fbSaveScores?.(matchScores);
+  if (saved === false) {
+    alert('Error saving score — check Firestore rules for bracket/scores.');
+    return;
+  }
+  closeScoreModal();
+  render();
+}
+
+async function clearScore() {
+  if (!_scoreEditMatchId) return;
+  delete matchScores[_scoreEditMatchId];
+  await window._fbSaveScores?.(matchScores);
+  closeScoreModal();
+  render();
+}
+
 
 /* ─── EXPORT PICKS TO PDF ───────────────────────────────────── */
 function exportPredictionsPDF() {
@@ -4553,15 +4704,25 @@ function initApp(firestoreData) {
     });
   }
 
+  // ── Real-time scores listener ──
+  if (window._fbListenScores) {
+    window._fbListenScores(scores => {
+      matchScores = scores;
+      render();
+    });
+  }
+
 }
 
 // Wait for Firebase to be ready, then load state + schedules before first render
 async function bootstrap() {
-  const [firestoreData, scheds] = await Promise.all([
+  const [firestoreData, scheds, scores] = await Promise.all([
     window._fbGet(),
-    window._fbGetSchedules ? window._fbGetSchedules() : Promise.resolve({})
+    window._fbGetSchedules ? window._fbGetSchedules() : Promise.resolve({}),
+    window._fbGetScores    ? window._fbGetScores()    : Promise.resolve({})
   ]);
-  matchSchedules = scheds || {};
+  matchSchedules = scheds  || {};
+  matchScores    = scores  || {};
   initApp(firestoreData);
 }
 
@@ -4623,5 +4784,49 @@ if (window._fbReady) {
 </div>
 
 <div id="exportPrintArea" style="display:none;"></div>
+
+<!-- ── Score Editor Modal (Admin) ── -->
+<div id="scoreModal" onclick="if(event.target===this)closeScoreModal()" style="
+  display:none; position:fixed; inset:0; z-index:6500;
+  align-items:center; justify-content:center;
+  background:rgba(7,9,14,0.82); backdrop-filter:blur(6px); padding:20px;">
+  <div style="
+    background:#161b25; border:1px solid rgba(46,204,113,0.3);
+    border-radius:14px; padding:28px; width:min(340px,100%);
+    box-shadow:0 20px 60px rgba(0,0,0,0.65);">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:1.2rem;letter-spacing:3px;color:var(--green);margin-bottom:18px;">🎯 Set Final Score</div>
+
+    <!-- Top team score -->
+    <label id="scoreTopLabel" style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px;">Top Team</label>
+    <input id="scoreTopInput" type="number" min="0" placeholder="0"
+      style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);color:var(--text);
+             font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:2px;padding:8px 12px;border-radius:6px;margin-bottom:14px;outline:none;text-align:center;" />
+
+    <!-- Bottom team score -->
+    <label id="scoreBotLabel" style="font-family:'Barlow Condensed',sans-serif;font-size:0.75rem;letter-spacing:1px;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px;">Bottom Team</label>
+    <input id="scoreBotInput" type="number" min="0" placeholder="0"
+      style="width:100%;box-sizing:border-box;background:var(--card);border:1px solid var(--border);color:var(--text);
+             font-family:'Bebas Neue',sans-serif;font-size:1.6rem;letter-spacing:2px;padding:8px 12px;border-radius:6px;margin-bottom:20px;outline:none;text-align:center;" />
+
+    <div style="display:flex;gap:10px;">
+      <button onclick="saveScore()" style="
+        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
+        background:rgba(46,204,113,0.12);border:1px solid var(--green);color:var(--green);
+        padding:9px;border-radius:6px;cursor:pointer;transition:all 0.15s;"
+        onmouseover="this.style.background='rgba(46,204,113,0.24)'"
+        onmouseout="this.style.background='rgba(46,204,113,0.12)'">Save</button>
+      <button onclick="clearScore()" style="
+        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
+        background:rgba(232,69,69,0.08);border:1px solid rgba(232,69,69,0.35);color:var(--red);
+        padding:9px;border-radius:6px;cursor:pointer;transition:all 0.15s;"
+        onmouseover="this.style.background='rgba(232,69,69,0.18)'"
+        onmouseout="this.style.background='rgba(232,69,69,0.08)'">Remove</button>
+      <button onclick="closeScoreModal()" style="
+        flex:1;font-family:'Barlow Condensed',sans-serif;font-size:0.85rem;letter-spacing:2px;text-transform:uppercase;
+        background:var(--card);border:1px solid var(--border);color:var(--muted);
+        padding:9px;border-radius:6px;cursor:pointer;">Cancel</button>
+    </div>
+  </div>
+</div>
 </body>
 </html>
